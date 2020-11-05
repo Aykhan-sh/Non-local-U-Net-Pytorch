@@ -68,7 +68,7 @@ class InputBlock(nn.Module):
         out = self.batch_norm2(out)
         out = self.relu(out)
         out = self.conv2(out)
-        x += out
+        x = x + out
         return x
 
 
@@ -90,7 +90,7 @@ class DownSamplingBlock(nn.Module):
         x = self.batch_norm2(x)
         x = self.relu(x)
         x = self.conv2(x)
-        x += residual
+        x = x + residual
         return x
 
 
@@ -112,5 +112,5 @@ class UpSamplingBlock(nn.Module):
     def forward(self, x) -> torch.tensor:
         residual = self.residual_deconv(x)
         x = self.agg_block(x)
-        x += residual
+        x = x + residual
         return x
