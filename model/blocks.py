@@ -44,7 +44,7 @@ class GlobalAggregationBlock(nn.Module):
         queryes = queryes.view(batch, cq, -1)
         keys = self.conv_1_ck(x).view(batch, self.ck, -1)
         values = self.conv_1_cv(x).view(batch, self.cv, -1)
-        attention = torch.matmul(queryes.permute((0, 2, 1)), keys) / (self.ck ** 0.5)
+        attention = torch.matmul(queryes.permute(0, 2, 1), keys) / (self.ck ** 0.5)
         attention = self.softmax(attention)
         # TODO add dropout
         output = torch.matmul(attention, values.permute(0, 2, 1))
