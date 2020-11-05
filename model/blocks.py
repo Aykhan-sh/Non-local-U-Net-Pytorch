@@ -47,7 +47,7 @@ class GlobalAggregationBlock(nn.Module):
         attention = torch.matmul(queryes.permute(0, 2, 1).contiguous(), keys) / (self.ck ** 0.5)
         attention = self.softmax(attention)
         # TODO add dropout
-        output = torch.matmul(attention, values.permute(0, 2, 1).contiguous())
+        output = torch.matmul(attention, values.permute(0, 2, 1)).contiguous()
         output = self.conv_1_co(output.view(batch, self.cv, dq, hq, wq))
         return output
 
