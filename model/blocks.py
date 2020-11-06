@@ -114,7 +114,8 @@ class BottomBlock(nn.Module):
         self.agg_block = GlobalAggregationBlock(in_channels, in_channels, ck, cv, 'same')
 
     def forward(self, x) -> torch.tensor:
-        return self.agg_block(x)
+        x = self.agg_block(x)
+        return x
 
 
 class UpSamplingBlock(nn.Module):
