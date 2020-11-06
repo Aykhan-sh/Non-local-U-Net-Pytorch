@@ -40,30 +40,17 @@ class GlobalAggregationBlock(nn.Module):
         :return: 5d torch tensor
         """
         queryes = self.query_transform(x)
-        print('queries', queryes.is_contiguous())
         batch, cq, dq, hq, wq = queryes.shape
-        queryes = queryes.view(batch, cq, -1)
-        print('queries', queryes.is_contiguous())
-        keys = self.conv_1_ck(x).view(batch, self.ck, -1)
-        print('keys', keys.is_contiguous())
-
-        values = self.conv_1_cv(x).view(batch, self.cv, -1)
-        print('values', values.is_contiguous())
+        queryes = queryes.flatten(start_dim=2, end_dim=-1)
+        keys = self.conv_1_ck(x).flatten(start_dim=2, end_dim=-1)
+        values = self.conv_1_cv(x).flatten(start_dim=2, end_dim=-1)
         queryes = queryes.transpose(2, 1).contiguous()
         attention = torch.matmul(queryes, keys) / (self.ck ** 0.5)
-        print('attention', attention.is_contiguous())
-
         attention = self.softmax(attention)
-        print('attention', attention.is_contiguous())
-
         # TODO add dropout
         values = values.transpose(2, 1).contiguous()
         output = torch.matmul(attention, values)
-        print('output', output.is_contiguous())
-
         output = self.conv_1_co(output.view(batch, self.cv, dq, hq, wq))
-        print('output', output.is_contiguous())
-
         return output
 
 
