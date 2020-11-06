@@ -36,13 +36,13 @@ class NonLocalUnet(nn.Module):
         x = self.up_sample1(x)
         print(x.is_contiguous())
 
-        x = x + suka.pop()
+        x = x + suka[-1]
         print(x.is_contiguous())
 
         x = self.up_sample2(x)
         print(x.is_contiguous())
 
-        x = x + suka.pop()
+        x = x + suka[-2]
         print(x.is_contiguous())
 
         x = self.output_block(x)
