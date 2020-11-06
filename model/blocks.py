@@ -34,7 +34,7 @@ class GlobalAggregationBlock(nn.Module):
             self.query_transform = query_transform
         self.conv_1_co = nn.Conv3d(cv, out_channels, 1)
 
-    def forward(self, x) -> torch.tensor:
+    def forward(self, x):
         """
         :param x: torch tensor (Batch, Channels, Depth, Height, Width)
         :return: 5d torch tensor
@@ -44,13 +44,13 @@ class GlobalAggregationBlock(nn.Module):
         queryes = queryes.flatten(start_dim=2, end_dim=-1)
         keys = self.conv_1_ck(x).flatten(start_dim=2, end_dim=-1)
         values = self.conv_1_cv(x).flatten(start_dim=2, end_dim=-1)
-        queryes = queryes.transpose(2, 1).contiguous()
+        queryes = queryes.transpose(2, 1)
         attention = torch.matmul(queryes, keys) / (self.ck ** 0.5)
         attention = self.softmax(attention)
         # TODO add dropout
         values = values.transpose(2, 1).contiguous()
         output = torch.matmul(attention, values)
-        output = self.conv_1_co(output.contiguous().view(batch, self.cv, dq, hq, wq).contiguous())
+        output = self.conv_1_co(output.view(batch, self.cv, dq, hq, wq))
         return output
 
 
@@ -63,7 +63,7 @@ class InputBlock(nn.Module):
         self.conv1 = nn.Conv3d(in_channels, in_channels, 3, padding=1)
         self.conv2 = nn.Conv3d(in_channels, in_channels, 3, padding=1)
 
-    def forward(self, x) -> torch.tensor:
+    def forward(self, x):
         out = self.batch_norm1(x)
         out = self.relu(out)
         out = self.conv1(out)
@@ -84,7 +84,7 @@ class DownSamplingBlock(nn.Module):
         self.conv1 = get_conv_transform(in_channels, out_channels, 'down')
         self.conv2 = nn.Conv3d(out_channels, out_channels, 3, 1, 1)
 
-    def forward(self, x) -> torch.tensor:
+    def forward(self, x)
         residual = self.residual_conv(x)
         x = self.batch_norm1(x)
         x = self.relu(x)
@@ -101,7 +101,7 @@ class BottomBlock(nn.Module):
         super(BottomBlock, self).__init__()
         self.agg_block = GlobalAggregationBlock(in_channels, in_channels, ck, cv, 'same')
 
-    def forward(self, x) -> torch.tensor:
+    def forward(self, x):
         x = self.agg_block(x)
         return x
 
@@ -112,7 +112,7 @@ class UpSamplingBlock(nn.Module):
         self.agg_block = GlobalAggregationBlock(in_channels, out_channels, ck, cv, 'up')
         self.residual_deconv = get_conv_transform(in_channels, out_channels, 'up')
 
-    def forward(self, x) -> torch.tensor:
+    def forward(self, x):
         residual = self.residual_deconv(x)
         x = self.agg_block(x)
         x = x + residual
