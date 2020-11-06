@@ -16,6 +16,7 @@ class NonLocalUnet(nn.Module):
         self.sg = nn.Sigmoid()
 
     def forward(self, x) -> torch.tensor:
+        x = x.contiguous()
         x = self.input_block(x)
         x1 = self.conv_input(x)
         x2 = self.down_sample1(x1)
