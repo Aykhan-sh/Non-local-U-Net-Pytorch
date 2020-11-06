@@ -84,7 +84,7 @@ class DownSamplingBlock(nn.Module):
         self.conv1 = get_conv_transform(in_channels, out_channels, 'down')
         self.conv2 = nn.Conv3d(out_channels, out_channels, 3, 1, 1)
 
-    def forward(self, x)
+    def forward(self, x):
         residual = self.residual_conv(x)
         x = self.batch_norm1(x)
         x = self.relu(x)
