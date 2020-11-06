@@ -18,18 +18,41 @@ class NonLocalUnet(nn.Module):
     def forward(self, x) -> torch.tensor:
         suka = []  # TODO rename suka
         x = self.input_block(x)
+        print(x.is_contiguous())
         x = self.conv_input(x)
+        print(x.is_contiguous())
+
         suka.append(x)
         x = self.down_sample1(x)
+        print(x.is_contiguous())
+
         suka.append(x)
         x = self.down_sample2(x)
+        print(x.is_contiguous())
+
         x = self.bottom(x)
+        print(x.is_contiguous())
+
         x = self.up_sample1(x)
+        print(x.is_contiguous())
+
         x = x + suka.pop()
+        print(x.is_contiguous())
+
         x = self.up_sample2(x)
+        print(x.is_contiguous())
+
         x = x + suka.pop()
+        print(x.is_contiguous())
+
         x = self.output_block(x)
+        print(x.is_contiguous())
+
         x = self.conv_output(x)
+        print(x.is_contiguous())
+
         x = self.sg(x)
+        print(x.is_contiguous())
+
         return x
 
