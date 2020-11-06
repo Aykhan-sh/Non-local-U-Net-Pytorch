@@ -50,7 +50,7 @@ class GlobalAggregationBlock(nn.Module):
         # TODO add dropout
         values = values.transpose(2, 1).contiguous()
         output = torch.matmul(attention, values)
-        output = self.conv_1_co(output.view(batch, self.cv, dq, hq, wq))
+        output = self.conv_1_co(output.contiguous().view(batch, self.cv, dq, hq, wq).contiguous())
         return output
 
 
