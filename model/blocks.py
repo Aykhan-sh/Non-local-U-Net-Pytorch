@@ -44,7 +44,7 @@ class GlobalAggregationBlock(nn.Module):
         queryes = queryes.flatten(start_dim=2, end_dim=-1)
         keys = self.conv_1_ck(x).flatten(start_dim=2, end_dim=-1)
         values = self.conv_1_cv(x).flatten(start_dim=2, end_dim=-1)
-        queryes = queryes.transpose(2, 1)
+        queryes = queryes.transpose(2, 1).contiguous()
         attention = torch.matmul(queryes, keys) / (self.ck ** 0.5)
         attention = self.softmax(attention)
         # TODO add dropout
