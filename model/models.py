@@ -13,7 +13,6 @@ class NonLocalUnet(nn.Module):
         self.up_sample2 = UpSamplingBlock(64, 32, 32, 32)
         self.output_block = InputBlock(32)
         self.conv_output = nn.Conv3d(32, out_channels, 1)
-        self.sg = nn.Sigmoid()
 
     def forward(self, x) -> torch.tensor:
         x = x.contiguous()
@@ -28,6 +27,6 @@ class NonLocalUnet(nn.Module):
         x = x + x1
         x = self.output_block(x)
         x = self.conv_output(x)
-        x = self.sg(x)
+        x = torch.sigmoid(x)
         return x
 
