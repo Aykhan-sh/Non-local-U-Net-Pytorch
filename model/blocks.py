@@ -40,16 +40,16 @@ class GlobalAggregationBlock(nn.Module):
         :param x: torch tensor (Batch, Channels, Depth, Height, Width)
         :return: 5d torch tensor
         """
-        queryes = self.query_transform(x)
-        batch, cq, dq, hq, wq = queryes.shape
-        queryes = queryes.flatten(start_dim=2, end_dim=-1)
+        queries = self.query_transform(x)
+        batch, cq, dq, hq, wq = queries.shape
+        queries = queries.flatten(start_dim=2, end_dim=-1)
         keys = self.conv_1_ck(x).flatten(start_dim=2, end_dim=-1)
         values = self.conv_1_cv(x).flatten(start_dim=2, end_dim=-1)
-        queryes = queryes.transpose(2, 1)
-        attention = torch.matmul(queryes, keys) / (self.ck ** 0.5)
+        queries = queries.transpose(2, 1).contiguous()
+        attention = torch.matmul(queries, keys) / (self.ck ** 0.5)
         attention = self.softmax(attention)
         attention = self.dropout(attention)
-        values = values.transpose(2, 1)
+        values = values.transpose(2, 1).contiguous()
         output = torch.matmul(attention, values)
         output = self.conv_1_co(output.view(batch, self.cv, dq, hq, wq))
         return output
