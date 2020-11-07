@@ -5,7 +5,7 @@ from model.utils import get_conv_transform
 
 
 class GlobalAggregationBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, ck, cv, query_transform):
+    def __init__(self, in_channels, out_channels, ck, cv, query_transform, dropout=0.5):
         """
         :param in_channels: int
             input channels
@@ -33,6 +33,7 @@ class GlobalAggregationBlock(nn.Module):
         else:
             self.query_transform = query_transform
         self.conv_1_co = nn.Conv3d(cv, out_channels, 1)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         """
@@ -47,7 +48,7 @@ class GlobalAggregationBlock(nn.Module):
         queryes = queryes.transpose(2, 1)
         attention = torch.matmul(queryes, keys) / (self.ck ** 0.5)
         attention = self.softmax(attention)
-        # TODO add dropout
+        attention = self.dropout(attention)
         values = values.transpose(2, 1)
         output = torch.matmul(attention, values)
         output = self.conv_1_co(output.view(batch, self.cv, dq, hq, wq))
