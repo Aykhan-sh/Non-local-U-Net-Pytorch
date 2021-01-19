@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from model.utils import get_conv_transform
+from model.convs import get_conv_transform
 
 
 class GlobalAggregationBlock(nn.Module):
@@ -98,9 +98,9 @@ class DownSamplingBlock(nn.Module):
 
 
 class BottomBlock(nn.Module):
-    def __init__(self, in_channels, ck, cv):
+    def __init__(self, in_channels, ck, cv, dropout=0.5):
         super(BottomBlock, self).__init__()
-        self.agg_block = GlobalAggregationBlock(in_channels, in_channels, ck, cv, 'same')
+        self.agg_block = GlobalAggregationBlock(in_channels, in_channels, ck, cv, 'same', dropout=dropout)
 
     def forward(self, x):
         x = self.agg_block(x)
@@ -108,9 +108,9 @@ class BottomBlock(nn.Module):
 
 
 class UpSamplingBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, ck, cv):
+    def __init__(self, in_channels, out_channels, ck, cv, dropout=0.5):
         super(UpSamplingBlock, self).__init__()
-        self.agg_block = GlobalAggregationBlock(in_channels, out_channels, ck, cv, 'up')
+        self.agg_block = GlobalAggregationBlock(in_channels, out_channels, ck, cv, 'up', dropout=dropout)
         self.residual_deconv = get_conv_transform(in_channels, out_channels, 'up')
 
     def forward(self, x):
