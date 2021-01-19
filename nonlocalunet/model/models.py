@@ -12,7 +12,7 @@ class NonLocalUnet(nn.Module):
         self.up_sample1 = UpSamplingBlock(128, 64, 64, 64)
         self.up_sample2 = UpSamplingBlock(64, 32, 32, 32)
         self.output_block = InputBlock(32)
-        self.dropout = nn.Dropout(dropout)()
+        self.dropout = nn.Dropout(dropout)
         self.conv_output = nn.Conv3d(32, out_channels, 1)
 
     def forward(self, x) -> torch.tensor:
