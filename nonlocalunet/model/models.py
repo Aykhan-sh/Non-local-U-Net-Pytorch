@@ -1,4 +1,4 @@
-from model.blocks import *
+from ..model.blocks import *
 
 
 class NonLocalUnet(nn.Module):
