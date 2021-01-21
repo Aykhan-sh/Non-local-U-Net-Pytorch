@@ -3,7 +3,7 @@ import numpy as np
 from scipy.spatial.distance import directed_hausdorff
 
 
-def mhd(gt, preds):
+def mhd_score(gt, preds):
     """
     :param gt: ndarray of shape [B, C, D, H, W]
     :param preds: ndarray of shape [B, C, D, H, W]
@@ -30,7 +30,7 @@ def mhd(gt, preds):
     return result
 
 
-def dr(gt, preds):
+def dr_score(gt, preds):
     """
     :param gt: ndarray of [B, C, D, H, W] shape
     :param preds: ndarray of [B, C, D, H, W] shape
