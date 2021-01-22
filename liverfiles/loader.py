@@ -1,5 +1,5 @@
 import random
-from .utils import get_mask, get_nii
+from liverfiles.utils import get_mask, get_nii
 import numpy as np
 from torch.utils.data import Dataset, DataLoader, random_split
 
@@ -56,7 +56,7 @@ class Ds(Dataset):
         return new, self.crop(mask, p)
 
     @staticmethod
-    def split_mask(self, mask):
+    def split_mask(mask):
         mask = np.concatenate((mask == 1, mask == 2))
         return mask
 

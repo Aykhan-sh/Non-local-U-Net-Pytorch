@@ -1,31 +1,33 @@
-import torch
 import wandb
 import os
-from .utils import get_lr
+from liverfiles.utils import get_lr, path_uniquify
+from liverfiles.metrics import *
+from typing import Tuple
+from numbers import Number
+from tqdm.notebook import tqdm
+
 
 class Trainer:
-    def __init__(self, model, optimizer, scheduler, criterion, metric_counter, train_dl, val_dl, device,
+    def __init__(self, model, optimizer, scheduler, criterion, train_dl, val_dl, device,
                  project_name, run_name, hparams=None):
         """
         :param model: torch model
         :param optimizer: torch optimizer
         :param scheduler: torch scheduler
         :param criterion: Loss function
-        :param metric_counter: Utils.MetricCounter instance
         :param train_dl: Train dataloader
         :param val_dl: Validation Dataloader
         :param device: string. 'cuda' or 'cpu'
         :param root: directory to save logs and weights  #FIXME
         """
         root = "weights"
-        self.model = model
+        self.model = model.to(device)
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.criterion = criterion
         self.train_dl = train_dl
         self.val_dl = val_dl
         self.device = device
-        self.metric_counter = metric_counter
         self.metric_history = []
         self.best_metrics = None
         self.best_weights_path = None
@@ -44,20 +46,7 @@ class Trainer:
     def get_lr(self):
         return get_lr(self.optimizer)
 
-    def get_target(self):
-        """
-        :return: string. name of target metric
-        """
-        return self.metric_counter.target_metric
-
-    def get_best_target(self) -> Number:
-        """
-        :return: measure of the best target metric
-        """
-        if self.best_metrics is not None:
-            return self.best_metrics[self.get_target()]
-
-    def prepare_input(self, x, labels):
+    def preprocess_input(self, x, labels):
         """
         Preprocessing of the output from dataloader before predictions are made.
         :param x: first output of the dataloader
@@ -66,7 +55,7 @@ class Trainer:
         """
         x = x.to(self.device).float()
         if labels is not None:
-            labels = labels.to(self.device).long()
+            labels = labels.to(self.device).float()
             return x, labels
         return x
 
@@ -83,27 +72,8 @@ class Trainer:
         self.optimizer.step()
         return preds, loss_values
 
-    def scheduler_step(self, metrics_list):
-        """
-        :param metrics: metrics of the step counted by MetricCounter
-        :return: None
-        """
-        metrics = metrics_list[0]
-        self.scheduler.step(metrics[self.metric_counter.target_metric])
-
-    def log(self, metrics_list, epoch):
-        cm = "confusion_matrix"
-        metrics_to_log = {}
-        for metrics in metrics_list:  # getting only scalars
-            metrics_to_log.update({metrics["mode"] + " " + k: v for k, v in metrics.items() if k not in ["mode", cm]})
-            if cm in metrics:
-                metrics_to_log[metrics['mode'] + ' ' + cm] = [
-                    wandb.Image(confusion_matrix_image(metrics[cm]), mode="RGB")]
-        metrics_to_log['lr'] = self.get_lr()
-        wandb.log(metrics_to_log, step=epoch)
-
     @staticmethod
-    def data_to_list(preds, labels) -> Tuple[list, list]:
+    def postprocess_output(preds, labels) -> Tuple[list, list]:
         """
         Override this method to postprocess data. Output must be list.
         Default implementation takes argmax from preds and detaches both input and converts it to list.
@@ -111,27 +81,48 @@ class Trainer:
         :param labels: second output from prepare_input function
         :return: processed preds and labels to list
         """
-        post_preds = preds.detach().cpu().numpy().tolist()
+        threshold = 0.5
+        post_preds = preds.detach().cpu().numpy()
+        post_preds = (post_preds > threshold).astype('uint8')
         if labels is not None:
-            post_gt = labels.detach().cpu().numpy().tolist()
+            post_gt = labels.detach().cpu().numpy()
             return post_preds, post_gt
         return post_preds
 
+    def scheduler_step(self, metrics_list):
+        """
+        :param metrics_list: metrics of the step counted by MetricCounter
+        :return: None
+        """
+        metrics = metrics_list[0]
+        self.scheduler.step(metrics['Val loss'])
+
+    def log(self, metrics, epoch):
+        wandb.log(metrics, step=epoch)
+
+    def image_log(self, image):
+        pass
+
     def train_one_epoch(self):
         t = tqdm(enumerate(self.train_dl), total=len(self.train_dl), desc='Train', leave=False)
+        metrics = None
         result, gt = [], []
         loss_sum = 0
         self.model.train()
         for idx, (x, labels) in t:
-            x, labels = self.prepare_input(x, labels)
+            x, labels = self.preprocess_input(x, labels)
             preds, loss_values = self.optimizer_step(x, labels)
-            preds, labels = self.data_to_list(preds, labels)
-            result += preds
-            gt += labels
+            preds, labels = self.postprocess_output(preds, labels)
+            temp_metrics = count_metrics(labels, preds, "Train")
+            if metrics is None:  # if the first iteration:
+                metrics = temp_metrics
+            else:  # sum all metrics
+                metrics = sum_metrics(metrics, temp_metrics)
             loss_sum += loss_values.item()
             t.set_postfix(loss=f'{loss_sum / (idx + 1):.3f}')
             t.update()
-        metrics = self.metric_counter(gt, result, {'loss': loss_sum / len(self.train_dl), "mode": "Train"})
+        metrics = divide_metrics(metrics, len(self.train_dl))  # averaging metrics
+        metrics['Train Loss'] = loss_sum / len(self.train_dl)  # adding to metric dictionary loss value
         return metrics
 
     @torch.no_grad()
@@ -139,15 +130,19 @@ class Trainer:
         self.model.eval()
         t = tqdm(enumerate(self.val_dl), total=len(self.val_dl), desc='Val', leave=False)
         loss_sum = 0
-        result, gt = [], []
+        metrics = None
         for idx, (x, labels) in t:
-            x, labels = self.prepare_input(x, labels)
+            x, labels = self.preprocess_input(x, labels)
             preds = self.model(x)
             loss_sum += self.criterion(preds, labels).item()
-            preds, labels = self.data_to_list(preds, labels)
-            result += preds
-            gt += labels
-        metrics = self.metric_counter(gt, result, {'loss': loss_sum / len(self.train_dl), "mode": "Val"})
+            preds, labels = self.postprocess_output(preds, labels)
+            temp_metrics = count_metrics(labels, preds, "Val")
+            if metrics is None:  # if the first iteration:
+                metrics = temp_metrics
+            else:  # sum all metrics
+                metrics = sum_metrics(metrics, temp_metrics)
+        metrics = divide_metrics(metrics, len(self.val_dl))  # averaging metrics
+        metrics['Val Loss'] = loss_sum / len(self.train_dl)  # adding to metric dictionary loss value
         return metrics
 
     @torch.no_grad()
@@ -155,9 +150,9 @@ class Trainer:
         t = tqdm(enumerate(dl), total=len(dl), desc='Test', leave=False)
         result = []
         for idx, x in t:
-            x = self.prepare_input(x, None)
+            x = self.preprocess_input(x, None)
             preds = self.model(x)
-            preds = self.data_to_list(preds, None)
+            preds = self.postprocess_output(preds, None)
             result += preds
         return result
 
@@ -171,36 +166,19 @@ class Trainer:
         :param filename: optional. string name for the ckp file
         :return: None. Saves cfg to directory
         """
-        save = False
-        best = False
-
-        if self.best_metrics is None:  # if first epoch
-            save = True
-            best = True
-            self.best_metrics = metric
-        else:  # if epoch is not the first
-            if self.metric_counter.compare_target(metric, self.best_metrics):
-                save = True
-                best = True
-                self.best_metrics = metric
-        if mode == 'all':
-            save = True
-        if save:
-            model, optimizer, scheduler, epoch = save_tuple
-            if filename is None:
-                filename = f'ep{epoch}_m{metric[self.get_target()]:.{ceil}}.ckp'
-            filepath = os.path.join(self.root, filename)
-            filepath = path_uniquify(filepath)
-            torch.save({
-                'epoch': epoch,
-                'weights': model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'scheduler': scheduler.state_dict(),
-                'metrics': metric,
-                **other},
-                filepath)
-            if best:
-                self.best_weights_path = filepath
+        model, optimizer, scheduler, epoch = save_tuple
+        if filename is None:
+            filename = f'ep{epoch}.ckp'
+        filepath = os.path.join(self.root, filename)
+        filepath = path_uniquify(filepath)
+        torch.save({
+            'epoch': epoch,
+            'weights': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'scheduler': scheduler.state_dict(),
+            'metrics': metric,
+            **other},
+            filepath)
 
     def train(self, epochs, save_kw={}, ckp_epoch=0):
         """
@@ -214,19 +192,20 @@ class Trainer:
         save_kw['other'] = {'all_epochs': epochs}
         for epoch in t:
             try:
-                train_metrics = self.train_one_epoch()
-                val_metrics = self.validate()
-                self.log([train_metrics, val_metrics], epoch)
-                self.save((self.model, self.optimizer, self.scheduler, epoch), val_metrics, **save_kw)
-                self.scheduler_step([train_metrics, val_metrics])
+                metrics = self.train_one_epoch()
+                metrics.update(self.validate())
+                self.log(metrics, epoch)
+                # self.save((self.model, self.optimizer, self.scheduler, epoch), metrics, **save_kw)
+                self.scheduler_step(metrics)
             except KeyboardInterrupt:
-                if epoch > ckp_epoch:  # ensure that at least one epoch was covered.
-                    save_kw['mode'] = 'all'
-                    self.save((self.model, self.optimizer, self.scheduler, epoch), val_metrics, **save_kw,
-                              filename='interrupted.ckp')
-                    print('Model has been saved')
-                raise KeyboardInterrupt
-        return val_metrics
+                pass
+            #     if epoch > ckp_epoch:  # ensure that at least one epoch was covered.
+            #         save_kw['mode'] = 'all'
+            #         self.save((self.model, self.optimizer, self.scheduler, epoch), metrics, **save_kw,
+            #                   filename='interrupted.ckp')
+            #         print('Model has been saved')
+            #     raise KeyboardInterrupt
+        return metrics
 
     def load_model(self, filepath=None):
         """

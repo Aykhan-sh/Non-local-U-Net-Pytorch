@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from ..model.convs import get_conv_transform
+from nonlocalunet.convs import get_conv_transform
 
 
 class GlobalAggregationBlock(nn.Module):

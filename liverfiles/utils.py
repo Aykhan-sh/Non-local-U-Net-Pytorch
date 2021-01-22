@@ -1,5 +1,8 @@
 import nibabel as nib
 import numpy as np
+import os
+import torch
+from prettytable import PrettyTable
 
 
 def get_nii(path):
@@ -10,7 +13,7 @@ def get_nii(path):
 
 def get_mask(path):
     if type(path) is not str:
-        path = f'../input/liver-tumor-segmentation/segmentations/segmentation-{path}.nii'
+        path = f'data/segmentations/segmentation-{path}.nii'
     return get_nii(path)
 
 
@@ -19,54 +22,38 @@ def get_lr(optimizer):
         return param_group['lr']
 
 
-class MetricCounter:
-    def __init__(self, metric_dict, target_metric, maximize):
-        """
-        :param metric_dict: dictionary where key is string - metric name and value is metric function
-        function must take two numpy arrays (gt, preds) and return a number
-        :param logger: torch.utils.tensorboard.SummaryWriter
-        :param target_metric: metric name to compare
-        :param maximize: bool. True if target_metric needed to be maximized.
-        """
-        self.metric_dict = metric_dict
-        self.target_metric = target_metric
-        self.maximize = maximize
+def path_uniquify(path):
+    filename, extension = os.path.splitext(path)
+    counter = 1
 
-    def __call__(self, gt, preds, other_metrics=None):
-        """
-        :param gt: ground truth
-        :param preds: predictions
-        :return: dictionary where key is metric name and value is score
-        """
-        result = {}
-        for name, func in self.metric_dict.items():
-            result[name] = func(to_numpy(gt), to_numpy(preds))
-        result.update(other_metrics)
-        return result
+    while os.path.exists(path):
+        path = filename + " (" + str(counter) + ")" + extension
+        counter += 1
 
-    @staticmethod
-    def print_metrics(metric_dict, ceil=4):
-        """
-        :param metric_dict: return of __call__ function
-        :param ceil: ceil metrics to nth number
-        :return: None. only print mertics
-        """
-        for key, val in metric_dict.items():
-            if key == 'epoch' or key == 'era':
-                continue
-            if type(val) is str:
-                print(f'{key}: {val}', end='; ')
-            else:
-                print(f'{key}: {val:.{ceil}f}', end='; ')
+    return path
 
-    def compare_target(self, a, b):
-        if self.maximize:
-            if a[self.target_metric] >= b[self.target_metric]:
-                return True
-            else:
-                return False
-        else:
-            if a[self.target_metric] <= b[self.target_metric]:
-                return True
-            else:
-                return False
+
+def count_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad: continue
+        param = parameter.numel()
+        table.add_row([name, param])
+        total_params += param
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    return total_params
+
+
+def to_numpy(array):
+    """
+    :param array: numpy, list, tensor
+    :return: numpy
+    """
+    if torch.is_tensor(array):
+        return array.cpu().detach().numpy()
+    elif type(array) is list:
+        return np.array(array)
+    else:
+        return array

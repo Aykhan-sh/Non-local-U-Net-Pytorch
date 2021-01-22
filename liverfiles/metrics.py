@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from scipy.spatial.distance import directed_hausdorff
+from liverfiles.utils import to_numpy
 
 
 def mhd_score(gt, preds):
@@ -27,7 +28,7 @@ def mhd_score(gt, preds):
             result_by_channel /= len(transpose_policy)
             result_by_batch.append(result_by_channel)
         result.append(result_by_batch)
-    return result
+    return np.mean(result, axis=0)
 
 
 def dr_score(gt, preds):
@@ -51,4 +52,22 @@ def dr_score(gt, preds):
                 dice_ratio = 2 * intersection / union
             result_by_batch.append(dice_ratio)
         result.append(result_by_batch)
-    return np.array(result)
+    return np.mean(result, axis=0)
+
+
+def count_metrics(gt, preds, mode):
+    metrics = {f'{mode} DR': dr_score(gt, preds),
+               f'{mode} 3D-MHD': mhd_score(gt, preds)}
+    return metrics
+
+
+def sum_metrics(metric_dict_a, metric_dict_b):
+    for key in metric_dict_a:
+        metric_dict_a[key] += metric_dict_b[key]
+    return metric_dict_a
+
+
+def divide_metrics(metric_dict, divide_by):
+    for key in metric_dict:
+        metric_dict[key] /= divide_by
+    return metric_dict
