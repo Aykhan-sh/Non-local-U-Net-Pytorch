@@ -12,15 +12,18 @@ class Ds(Dataset):
         self.nonzero_prob = nonzero_prob
 
     def __getitem__(self, idx):
-        path, img_id = self.df.iloc[idx].values
-        img, mask = get_nii(path), get_mask(img_id)
-        img, mask = self.random_crop3d(img, mask)
-        img = np.transpose(img, (2, 0, 1))
-        mask = np.transpose(mask, (2, 0, 1))
-        img = np.expand_dims(img, axis=0)
-        mask = np.expand_dims(mask, axis=0)
-        mask = split_mask(mask).astype('int8')
-        return img, mask
+        try:
+            path, img_id = self.df.iloc[idx].values
+            img, mask = get_nii(path), get_mask(img_id)
+            img, mask = self.random_crop3d(img, mask)
+            img = np.transpose(img, (2, 0, 1))
+            mask = np.transpose(mask, (2, 0, 1))
+            img = np.expand_dims(img, axis=0)
+            mask = np.expand_dims(mask, axis=0)
+            mask = split_mask(mask).astype('int16')
+            return img, mask
+        except:
+            print(self.df.path[idx])
 
     def min_max(self, img):
         img = img - img.min()
@@ -57,5 +60,3 @@ class Ds(Dataset):
 
     def __len__(self):
         return len(self.df)
-
-

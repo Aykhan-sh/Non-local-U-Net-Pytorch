@@ -109,7 +109,15 @@ class Trainer:
 
     def log(self, metrics, x, preds, labels, epoch):
         # metrics logging
-        wandb.log(metrics, step=epoch)
+        metrics_to_log = {}
+        labels_name = ['primary', 'secondary']
+        for key, value in metrics.items():
+            if type(value) not in [float, int]:
+                for idx, l in enumerate(labels_name):
+                    metrics_to_log[f"{key} {l}"] = value[idx]
+            else:
+                metrics_to_log[key] = value
+        wandb.log(metrics_to_log, step=epoch)
         # logging images
         img_size = x.shape[-2:]
         center = x.shape[2] // 2
