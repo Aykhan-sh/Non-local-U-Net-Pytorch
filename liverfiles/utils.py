@@ -17,6 +17,24 @@ def get_mask(path):
     return get_nii(path)
 
 
+def split_mask(mask):
+    mask = np.concatenate((mask == 1, mask == 2))
+    return mask
+
+
+def unsplit_binary_mask(mask):
+    """
+    :param mask: binary mask of shape [B, C, D, H, W] or [B, C, H, W]
+    :return: mask of shape [B, D, H, W] or [B, H, W] with integers of corresponding classes
+    """
+    img_size = mask.shape[-2:]
+    mask = np.insert(mask, 0, np.zeros(img_size), axis=1)
+    for i in range(mask.shape[1]):  # assign to each channel its class int
+        mask[:, i, :, :] *= i
+    mask = mask.argmax(axis=1)
+    return mask
+
+
 def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']

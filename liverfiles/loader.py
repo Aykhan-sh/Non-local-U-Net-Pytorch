@@ -1,7 +1,7 @@
 import random
-from liverfiles.utils import get_mask, get_nii
+from liverfiles.utils import get_mask, get_nii, split_mask
 import numpy as np
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset
 
 
 class Ds(Dataset):
@@ -19,7 +19,7 @@ class Ds(Dataset):
         mask = np.transpose(mask, (2, 0, 1))
         img = np.expand_dims(img, axis=0)
         mask = np.expand_dims(mask, axis=0)
-        mask = self.split_mask(mask).astype('int8')
+        mask = split_mask(mask).astype('int8')
         return img, mask
 
     def min_max(self, img):
@@ -55,10 +55,7 @@ class Ds(Dataset):
             #     return self.random_crop3d(img, mask, False)
         return new, self.crop(mask, p)
 
-    @staticmethod
-    def split_mask(mask):
-        mask = np.concatenate((mask == 1, mask == 2))
-        return mask
-
     def __len__(self):
         return len(self.df)
+
+

@@ -1,6 +1,6 @@
 import wandb
 import os
-from liverfiles.utils import get_lr, path_uniquify
+from liverfiles.utils import get_lr, path_uniquify, unsplit_binary_mask
 from liverfiles.metrics import *
 from typing import Tuple
 from numbers import Number
@@ -82,26 +82,46 @@ class Trainer:
         :return: processed preds and labels to list
         """
         threshold = 0.5
-        post_preds = preds.detach().cpu().numpy()
+        post_preds = to_numpy(preds)
         post_preds = (post_preds > threshold).astype('uint8')
         if labels is not None:
-            post_gt = labels.detach().cpu().numpy()
+            post_gt = to_numpy(labels)
             return post_preds, post_gt
         return post_preds
 
-    def scheduler_step(self, metrics_list):
+    def scheduler_step(self, metrics):
         """
         :param metrics_list: metrics of the step counted by MetricCounter
         :return: None
         """
-        metrics = metrics_list[0]
-        self.scheduler.step(metrics['Val loss'])
+        self.scheduler.step(metrics['Val Loss'])
 
-    def log(self, metrics, epoch):
+    @staticmethod
+    def wb_mask(img, pred_mask, true_mask):
+        labels = {
+            0: 'healthy',
+            1: 'primary',
+            2: 'secondary'
+        }
+        return wandb.Image(img, masks={
+            "prediction": {"mask_data": pred_mask, "class_labels": labels},
+            "ground truth": {"mask_data": true_mask, "class_labels": labels}})
+
+    def log(self, metrics, x, preds, labels, epoch):
+        # metrics logging
         wandb.log(metrics, step=epoch)
-
-    def image_log(self, image):
-        pass
+        # logging images
+        img_size = x.shape[-2:]
+        center = x.shape[2] // 2
+        examples = x[:, :, center, :, :]
+        pred_masks = preds[:, :, center, :, :]
+        pred_masks = unsplit_binary_mask(pred_masks)
+        gt_masks = labels[:, :, center, :, :]
+        gt_masks = unsplit_binary_mask(gt_masks)
+        wandb_images = []
+        for i in range(x.shape[0]):
+            wandb_images.append(self.wb_mask(examples[i], pred_masks[i], gt_masks[i]))
+        wandb.log({'Images': wandb_images}, step=epoch)
 
     def train_one_epoch(self):
         t = tqdm(enumerate(self.train_dl), total=len(self.train_dl), desc='Train', leave=False)
@@ -141,9 +161,10 @@ class Trainer:
                 metrics = temp_metrics
             else:  # sum all metrics
                 metrics = sum_metrics(metrics, temp_metrics)
+        x = to_numpy(x)
         metrics = divide_metrics(metrics, len(self.val_dl))  # averaging metrics
         metrics['Val Loss'] = loss_sum / len(self.train_dl)  # adding to metric dictionary loss value
-        return metrics
+        return metrics, x, preds, labels
 
     @torch.no_grad()
     def infer(self, dl):
@@ -193,8 +214,9 @@ class Trainer:
         for epoch in t:
             try:
                 metrics = self.train_one_epoch()
-                metrics.update(self.validate())
-                self.log(metrics, epoch)
+                val_metrics, x, preds, labels = self.validate()
+                metrics.update(val_metrics)
+                self.log(metrics, x, preds, labels, epoch)
                 # self.save((self.model, self.optimizer, self.scheduler, epoch), metrics, **save_kw)
                 self.scheduler_step(metrics)
             except KeyboardInterrupt:
