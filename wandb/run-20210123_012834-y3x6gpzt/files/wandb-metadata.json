@@ -1,0 +1,26 @@
+{
+    "os": "Windows-10-10.0.19041-SP0",
+    "python": "3.8.5",
+    "heartbeatAt": "2021-01-22T19:28:43.447740",
+    "startedAt": "2021-01-22T19:28:34.533591",
+    "docker": null,
+    "gpu": "GeForce GTX 1650",
+    "gpu_count": 1,
+    "cpu_count": 8,
+    "cuda": null,
+    "args": [
+        "-f",
+        "C:\\Users\\Abylaikhan\\AppData\\Roaming\\jupyter\\runtime\\kernel-eec95e4b-3c6e-45c9-935c-ed9f64adab90.json"
+    ],
+    "state": "running",
+    "program": "<python with no main file>",
+    "git": {
+        "remote": "https://github.com/Aykhan-sh/Non-local-U-Net-Pytorch.git",
+        "commit": "4cd7d4ae1e3c93dcc38fff389092b9d49ddfbe20"
+    },
+    "email": "a.turlasov@gmail.com",
+    "root": "C:/Users/Abylaikhan/Desktop/Job/Non-local-U-Net-Pytorch",
+    "host": "DESKTOP-P4HP8E3",
+    "username": "Abylaikhan",
+    "executable": "C:\\Users\\Abylaikhan\\anaconda3\\python.exe"
+}

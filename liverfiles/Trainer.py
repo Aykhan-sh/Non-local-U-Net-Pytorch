@@ -42,6 +42,7 @@ class Trainer:
         weight_path = os.path.join(wandb.run.dir[:-5], root)
         os.makedirs(weight_path, exist_ok=True)
         self.root = weight_path
+        self.shape = self.train_dl.shape
 
     def get_lr(self):
         return get_lr(self.optimizer)
@@ -91,7 +92,7 @@ class Trainer:
 
     def scheduler_step(self, metrics):
         """
-        :param metrics_list: metrics of the step counted by MetricCounter
+        :param metrics: metrics of the step counted by MetricCounter
         :return: None
         """
         self.scheduler.step(metrics['Val Loss'])
@@ -173,17 +174,6 @@ class Trainer:
         metrics = divide_metrics(metrics, len(self.val_dl))  # averaging metrics
         metrics['Val Loss'] = loss_sum / len(self.train_dl)  # adding to metric dictionary loss value
         return metrics, x, preds, labels
-
-    @torch.no_grad()
-    def infer(self, dl):
-        t = tqdm(enumerate(dl), total=len(dl), desc='Test', leave=False)
-        result = []
-        for idx, x in t:
-            x = self.preprocess_input(x, None)
-            preds = self.model(x)
-            preds = self.postprocess_output(preds, None)
-            result += preds
-        return result
 
     def save(self, save_tuple, metric: dict, mode='all', other={}, ceil=4, filename=None):
         """

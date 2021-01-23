@@ -1,0 +1,25 @@
+2021-01-23 01:28:34,537 INFO    MainThread:6288 [wandb_setup.py:_flush():70] setting env: {}
+2021-01-23 01:28:34,537 INFO    MainThread:6288 [wandb_setup.py:_flush():70] multiprocessing start_methods=spawn
+2021-01-23 01:28:34,537 INFO    MainThread:6288 [wandb_setup.py:_flush():70] setting login settings: {}
+2021-01-23 01:28:34,537 INFO    MainThread:6288 [wandb_setup.py:_flush():70] configuring jupyter hooks <wandb.sdk.wandb_init._WandbInit object at 0x000001DC30B15A00>
+2021-01-23 01:28:34,538 INFO    MainThread:6288 [wandb_init.py:_log_setup():318] Logging user logs to C:\Users\Abylaikhan\Desktop\Job\Non-local-U-Net-Pytorch\wandb\run-20210123_012834-y3x6gpzt\logs\debug.log
+2021-01-23 01:28:34,538 INFO    MainThread:6288 [wandb_init.py:_log_setup():319] Logging internal logs to C:\Users\Abylaikhan\Desktop\Job\Non-local-U-Net-Pytorch\wandb\run-20210123_012834-y3x6gpzt\logs\debug-internal.log
+2021-01-23 01:28:43,647 INFO    MainThread:6288 [wandb_run.py:_console_start():1308] atexit reg
+2021-01-23 01:28:43,648 INFO    MainThread:6288 [wandb_run.py:_redirect():1175] redirect: SettingsConsole.WRAP
+2021-01-23 01:28:43,648 INFO    MainThread:6288 [wandb_run.py:_redirect():1206] Wrapping output streams.
+2021-01-23 01:28:43,648 INFO    MainThread:6288 [wandb_run.py:_redirect():1222] Redirects installed.
+2021-01-23 01:28:43,649 INFO    MainThread:6288 [wandb_init.py:_pause_backend():239] pausing backend
+2021-01-23 01:28:56,411 INFO    MainThread:6288 [wandb_init.py:_resume_backend():244] resuming backend
+2021-01-23 01:29:10,383 INFO    MainThread:6288 [wandb_init.py:_pause_backend():239] pausing backend
+2021-01-23 01:29:44,131 INFO    MainThread:6288 [wandb_init.py:_resume_backend():244] resuming backend
+2021-01-23 01:29:44,170 INFO    MainThread:6288 [wandb_init.py:_pause_backend():239] pausing backend
+2021-01-23 01:29:45,102 INFO    MainThread:6288 [wandb_init.py:_resume_backend():244] resuming backend
+2021-01-23 01:29:45,112 INFO    MainThread:6288 [wandb_setup.py:_flush():70] setting env: {}
+2021-01-23 01:29:45,112 INFO    MainThread:6288 [wandb_setup.py:_flush():70] multiprocessing start_methods=spawn
+2021-01-23 01:29:45,112 INFO    MainThread:6288 [wandb_setup.py:_flush():70] setting login settings: {}
+2021-01-23 01:29:45,112 INFO    MainThread:6288 [wandb_setup.py:_flush():70] configuring jupyter hooks <wandb.sdk.wandb_init._WandbInit object at 0x000001DC30B15A00>
+2021-01-23 01:29:45,112 INFO    MainThread:6288 [wandb_init.py:_log_setup():318] Logging user logs to C:\Users\Abylaikhan\Desktop\Job\Non-local-U-Net-Pytorch\wandb\run-20210123_012945-va3x188t\logs\debug.log
+2021-01-23 01:29:45,113 INFO    MainThread:6288 [wandb_init.py:_log_setup():319] Logging internal logs to C:\Users\Abylaikhan\Desktop\Job\Non-local-U-Net-Pytorch\wandb\run-20210123_012945-va3x188t\logs\debug-internal.log
+2021-01-23 01:29:45,115 INFO    MainThread:6288 [wandb_run.py:finish():983] finishing run aykhan/unet_test/y3x6gpzt
+2021-01-23 01:29:45,115 INFO    MainThread:6288 [wandb_init.py:_jupyter_teardown():249] cleaning up jupyter logic
+2021-01-23 01:29:45,116 INFO    MainThread:6288 [jupyter.py:save_history():208] not saving jupyter history
