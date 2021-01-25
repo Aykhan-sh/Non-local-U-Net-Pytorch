@@ -1,7 +1,6 @@
 import torch
 import numpy as np
-from collections.abc import Iterable
-from numbers import Number
+from torch.utils.data import Dataset, DataLoader
 
 
 def to_numpy(array):
@@ -17,16 +16,31 @@ def to_numpy(array):
         return array
 
 
+class InferenceDataset(Dataset):
+    def __init__(self, img, start_coordinates, input_size):
+        self.img = img
+        self.sc = start_coordinates
+        self.ins = input_size
+
+    def __getitem__(self, idx):
+        i, j, k = self.sc[idx]
+        patch = self.img[:, i:i + self.ins[0], j:j + self.ins[1], k:k + self.ins[2]]
+        return patch
+
+    def __len__(self):
+        return len(self.sc)
+
+
 @torch.no_grad()
-def infer(model, img, inp_s, out_classes, window, batch_size, device):  # C, W, H, D
+def infer(model, img, ins, out_classes, window, batch_size, num_workers, device):  # C, W, H, D
     """
-    :param self:
     :param model:
     :param img:
-    :param inp_s: model input shapes
+    :param ins: model input shapes
     :param out_classes:
     :param window:
     :param batch_size:
+    :param num_workers:
     :param device:
     :return:
     """
@@ -34,10 +48,10 @@ def infer(model, img, inp_s, out_classes, window, batch_size, device):  # C, W, 
         window = (window, window, window)
     is_valid = True
     for i in range(3):
-        is_valid = is_valid and window[i] <= inp_s[i]
+        is_valid = is_valid and window[i] <= ins[i]
     assert is_valid, "Window must be <= than the lowest dimension of models input shape"
     model.to(device)
-    ors = img.shape[-3:]
+    ors = img.shape[-3:]  # original shape
 
     pad = (window - (np.array(img.shape[-3:]) % window)) % window  # calculation padding for image
     pad = [(0, 0)] + [(0, i) for i in pad]
@@ -55,18 +69,15 @@ def infer(model, img, inp_s, out_classes, window, batch_size, device):  # C, W, 
                 jj = j * window[1]
                 kk = k * window[2]
                 start_coordinates.append((ii, jj, kk))
-    for idx, (i, j, k) in enumerate(start_coordinates):  # predicting loop
-        batch = []
-        batch_coords = []
-        while len(batch) != batch_size:  # collecting batch
-            temp_image = img[:, i:i + inp_s[0], j:j + inp_s[1], k:k + inp_s[2]]
-            batch.append(temp_image)
-            batch_coords.append((i, j, k))
-        batch = torch.tensor(batch)  # converting to torch
-        preds = model(batch.to(device).float())  # making prediciton
-        for idx_batch, (ii, jj, kk) in enumerate(batch_coords):  # iteration over the batch
-            result[:, ii:ii + inp_s[0], jj:jj + inp_s[1], kk:kk + inp_s[2]] = to_numpy(preds[idx_batch])
-            result_cnt[ii:ii + inp_s[0], jj:jj + inp_s[1], kk:kk + inp_s[2]] += 1
+    ds = InferenceDataset(img, start_coordinates, ins)
+    dl = DataLoader(ds, batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=False)
+    for idx, patch in enumerate(dl):
+        preds = model(patch.to(device).float())
+        for patch_idx in range(batch_size):  # iteration over the batch
+            current_idx = idx * batch_size + patch_idx
+            i, j, k = start_coordinates[current_idx]
+            result[:, i:i + ins[0], j:j + ins[1], k:k + ins[2]] += to_numpy(preds[patch_idx])
+            result_cnt[i:i + ins[0], j:j + ins[1], k:k + ins[2]] += 1
     result = result[:, :ors[0], :ors[1], :ors[2]]
     result_cnt = result_cnt[:ors[0], :ors[1], :ors[2]]
     result = result / result_cnt
