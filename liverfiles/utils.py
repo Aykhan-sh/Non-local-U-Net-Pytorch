@@ -5,6 +5,15 @@ import torch
 from prettytable import PrettyTable
 
 
+def to_uint(array):
+    array -= array.min()
+    array_max = array.max()
+    if array_max != 0:
+        array = array / array_max
+    array *= 255
+    array = array.astype('uint8')
+    return array
+
 def get_nii(path):
     img = nib.load(path)
     img = np.array(img.dataobj)

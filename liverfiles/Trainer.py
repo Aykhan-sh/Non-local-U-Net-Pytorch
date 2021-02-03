@@ -1,15 +1,19 @@
 import wandb
 import os
-from liverfiles.utils import get_lr, path_uniquify, unsplit_binary_mask
+from liverfiles.utils import get_lr, path_uniquify, unsplit_binary_mask, to_uint
 from liverfiles.metrics import *
 from typing import Tuple
 from numbers import Number
 from tqdm.notebook import tqdm
+from liverfiles.utils import get_nii, get_mask
+from nonlocalunet.infer import infer
+from liverfiles.utils import split_mask
 
 
 class Trainer:
-    def __init__(self, model, optimizer, scheduler, criterion, train_dl, val_dl, device,
-                 project_name, run_name, hparams=None):
+    def __init__(self, model, optimizer, scheduler, criterion, train_dl, val_df, device,
+                 project_name, run_name,
+                 hparams=None, window=None):
         """
         :param model: torch model
         :param optimizer: torch optimizer
@@ -26,7 +30,7 @@ class Trainer:
         self.scheduler = scheduler
         self.criterion = criterion
         self.train_dl = train_dl
-        self.val_dl = val_dl
+        self.val_df = val_df
         self.device = device
         self.metric_history = []
         self.best_metrics = None
@@ -42,7 +46,10 @@ class Trainer:
         weight_path = os.path.join(wandb.run.dir[:-5], root)
         os.makedirs(weight_path, exist_ok=True)
         self.root = weight_path
-        self.shape = self.train_dl.shape
+        self.shape = self.train_dl.dataset.shape
+        self.current_epoch = None
+        if window is None:
+            self.window = self.shape
 
     def get_lr(self):
         return get_lr(self.optimizer)
@@ -120,17 +127,19 @@ class Trainer:
                 metrics_to_log[key] = value
         wandb.log(metrics_to_log, step=epoch)
         # logging images
-        img_size = x.shape[-2:]
-        center = x.shape[2] // 2
-        examples = x[:, :, center, :, :]
-        pred_masks = preds[:, :, center, :, :]
-        pred_masks = unsplit_binary_mask(pred_masks)
-        gt_masks = labels[:, :, center, :, :]
-        gt_masks = unsplit_binary_mask(gt_masks)
-        wandb_images = []
-        for i in range(x.shape[0]):
-            wandb_images.append(self.wb_mask(examples[i], pred_masks[i], gt_masks[i]))
-        wandb.log({'Images': wandb_images}, step=epoch)
+        preds = unsplit_binary_mask(preds)
+        preds = np.expand_dims(preds, axis=1)
+        labels = unsplit_binary_mask(labels)
+        labels = np.expand_dims(labels, axis=1)
+        if epoch == 0:  # if epoch is the first we log image label and prediction
+            iter_array = [(x, "Image"), (labels, "Labels"), (preds, "Prediction")]
+        else:  # otherwise we only need log predictions
+            iter_array = [(preds, "Prediction")]
+        for array, log_name in iter_array:
+            array = array[0]
+            array = to_uint(array)
+            array = np.transpose(array, (1, 0, 2, 3))
+            wandb.log({log_name: wandb.Video(array, fps=4, format="gif")}, step=epoch)
 
     def train_one_epoch(self):
         t = tqdm(enumerate(self.train_dl), total=len(self.train_dl), desc='Train', leave=False)
@@ -157,47 +166,54 @@ class Trainer:
     @torch.no_grad()
     def validate(self):
         self.model.eval()
-        t = tqdm(enumerate(self.val_dl), total=len(self.val_dl), desc='Val', leave=False)
+        t = tqdm(enumerate(self.val_df.values), total=len(self.val_df.values), desc='Val', leave=False)
         loss_sum = 0
         metrics = None
-        for idx, (x, labels) in t:
-            x, labels = self.preprocess_input(x, labels)
-            preds = self.model(x)
-            loss_sum += self.criterion(preds, labels).item()
-            preds, labels = self.postprocess_output(preds, labels)
+        for idx, (path, img_id) in t:
+            img, mask = get_nii(path), get_mask(img_id)  # H, W, D
+            # img
+            img = np.transpose(img, (2, 1, 0))  # D, W, H
+            img = np.expand_dims(img, axis=0)  # C, D, W, H
+            # mask
+            mask = np.transpose(mask, (2, 1, 0))  # D, W, H
+            mask = np.expand_dims(mask, axis=0)  # C, D, W, H
+            mask = split_mask(mask)  # C, D, W, H
+            # peds
+            preds = self.infer(img)  # C, D, W, H
+            preds = np.expand_dims(preds, axis=0)  # B, C, D, W, H
+            img = np.expand_dims(img, axis=0)  # B, C, D, W, H
+            mask = np.expand_dims(mask, axis=0)  # B, C, D, W, H
+            preds, mask = self.preprocess_input(torch.tensor(preds), torch.tensor(mask))
+            loss_sum += self.criterion(preds, mask).item()
+            preds, labels = self.postprocess_output(preds, mask)
+            img = to_numpy(img)
+            mask = to_numpy(mask)
+            preds = to_numpy(preds)
             temp_metrics = count_metrics(labels, preds, "Val")
             if metrics is None:  # if the first iteration:
                 metrics = temp_metrics
             else:  # sum all metrics
                 metrics = sum_metrics(metrics, temp_metrics)
-        x = to_numpy(x)
-        metrics = divide_metrics(metrics, len(self.val_dl))  # averaging metrics
-        metrics['Val Loss'] = loss_sum / len(self.train_dl)  # adding to metric dictionary loss value
-        return metrics, x, preds, labels
 
-    def save(self, save_tuple, metric: dict, mode='all', other={}, ceil=4, filename=None):
+        metrics = divide_metrics(metrics, len(self.val_df))  # averaging metrics
+        metrics['Val Loss'] = loss_sum / len(self.train_dl)  # adding to metric dictionary loss value
+        return metrics, img, preds, mask
+
+    def infer(self, img):
+        return infer(self.model, img, self.shape, 2, self.window,
+                     batch_size=self.train_dl.batch_size, num_workers=self.train_dl.num_workers,
+                     device=self.device)
+
+    def save(self, filename=None):
         """
-        :param save_tuple: (model, optimizer, scheduler, epoch)
-        :param metric: metric of current epoch
-        :param mode: string 'all' or 'best'
-        :param other: dictionary of other parameters to save
-        :param ceil: number to ceil metric in file name
         :param filename: optional. string name for the ckp file
         :return: None. Saves cfg to directory
         """
-        model, optimizer, scheduler, epoch = save_tuple
         if filename is None:
-            filename = f'ep{epoch}.ckp'
+            filename = f"{self.current_epoch}.ckp"
         filepath = os.path.join(self.root, filename)
         filepath = path_uniquify(filepath)
-        torch.save({
-            'epoch': epoch,
-            'weights': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'scheduler': scheduler.state_dict(),
-            'metrics': metric,
-            **other},
-            filepath)
+        torch.save(self, filepath)
 
     def train(self, epochs, save_kw={}, ckp_epoch=0):
         """
@@ -206,25 +222,23 @@ class Trainer:
         :param ckp_epoch:
         :return:
         """
-
         t = tqdm(range(ckp_epoch, epochs), total=epochs, initial=ckp_epoch, desc='Epoch')
         save_kw['other'] = {'all_epochs': epochs}
         for epoch in t:
+            self.current_epoch = epoch
             try:
                 metrics = self.train_one_epoch()
                 val_metrics, x, preds, labels = self.validate()
                 metrics.update(val_metrics)
                 self.log(metrics, x, preds, labels, epoch)
-                # self.save((self.model, self.optimizer, self.scheduler, epoch), metrics, **save_kw)
+                self.save()
                 self.scheduler_step(metrics)
             except KeyboardInterrupt:
                 pass
-            #     if epoch > ckp_epoch:  # ensure that at least one epoch was covered.
-            #         save_kw['mode'] = 'all'
-            #         self.save((self.model, self.optimizer, self.scheduler, epoch), metrics, **save_kw,
-            #                   filename='interrupted.ckp')
-            #         print('Model has been saved')
-            #     raise KeyboardInterrupt
+                if epoch > ckp_epoch:  # ensure that at least one epoch was covered.
+                    self.save(filename='interrupted.ckp')
+                    print('Model has been saved')
+                raise KeyboardInterrupt
         return metrics
 
     def load_model(self, filepath=None):

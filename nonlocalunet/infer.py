@@ -51,6 +51,8 @@ def infer(model, img, ins, out_classes, window, batch_size, num_workers, device)
         is_valid = is_valid and window[i] <= ins[i]
     assert is_valid, "Window must be <= than the lowest dimension of models input shape"
     model.to(device)
+    if len(img.shape) == 3:
+        img = np.expand_dims(img, axis=0)
     ors = img.shape[-3:]  # original shape
 
     pad = (window - (np.array(img.shape[-3:]) % window)) % window  # calculation padding for image
@@ -75,6 +77,8 @@ def infer(model, img, ins, out_classes, window, batch_size, num_workers, device)
         preds = model(patch.to(device).float())
         for patch_idx in range(batch_size):  # iteration over the batch
             current_idx = idx * batch_size + patch_idx
+            if current_idx == len(start_coordinates):
+                break
             i, j, k = start_coordinates[current_idx]
             result[:, i:i + ins[0], j:j + ins[1], k:k + ins[2]] += to_numpy(preds[patch_idx])
             result_cnt[i:i + ins[0], j:j + ins[1], k:k + ins[2]] += 1
@@ -82,3 +86,4 @@ def infer(model, img, ins, out_classes, window, batch_size, num_workers, device)
     result_cnt = result_cnt[:ors[0], :ors[1], :ors[2]]
     result = result / result_cnt
     return result
+# dolboyebskiy inference ya by skazal
