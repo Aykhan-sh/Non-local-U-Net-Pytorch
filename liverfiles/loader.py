@@ -5,8 +5,9 @@ from torch.utils.data import Dataset
 
 
 class Ds(Dataset):
-    def __init__(self, df, crop_shape, transforms, nonzero_prob=0.5):
-        self.df = df
+    def __init__(self, imgs, masks, crop_shape, transforms, nonzero_prob=0.5):
+        self.imgs = imgs
+        self.masks = masks
         self.transforms = transforms
         self.shape = crop_shape
         self.nonzero_prob = nonzero_prob
@@ -14,8 +15,9 @@ class Ds(Dataset):
 
     def __getitem__(self, idx):
         try:
-            path, img_id = self.df.iloc[idx].values
-            img, mask = get_nii(path), get_mask(img_id)
+            # path, img_id = self.df.iloc[idx].values
+            # img, mask = get_nii(path), get_mask(img_id)
+            img, mask = self.imgs[idx], self.masks[idx]
             img, mask = self.random_crop3d(img, mask)
             img = self.img_preprocess(img)
             img = np.transpose(img, (2, 1, 0))
@@ -25,7 +27,7 @@ class Ds(Dataset):
             mask = split_mask(mask).astype('int16')
             return img, mask
         except:
-            print(self.df.path[idx])
+            print(idx)
 
     @staticmethod
     def img_preprocess(img):
@@ -61,7 +63,6 @@ class Ds(Dataset):
         return new_img, new_mask
 
     def random_crop3d(self, img, mask):
-        print(img.shape, mask.shape)
         if type(self.nonzero_prob) is bool:
             nonzero = self.nonzero_prob
         else:
@@ -73,4 +74,4 @@ class Ds(Dataset):
         return new_img, new_mask
 
     def __len__(self):
-        return len(self.df)
+        return len(self.imgs)

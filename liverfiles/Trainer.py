@@ -5,15 +5,16 @@ from liverfiles.metrics import *
 from typing import Tuple
 from numbers import Number
 from tqdm.notebook import tqdm
-from liverfiles.utils import get_nii, get_mask
+from liverfiles.utils import get_nii, get_mask, create_logger, img_with_masks
 from nonlocalunet.infer import infer
 from liverfiles.utils import split_mask
+
+labels_name = ['primary', 'secondary']
 
 
 class Trainer:
     def __init__(self, model, optimizer, scheduler, criterion, train_dl, val_df, device,
-                 project_name, run_name,
-                 hparams=None, window=None):
+                 run_name, hparams=None, window=None, root='weights'):
         """
         :param model: torch model
         :param optimizer: torch optimizer
@@ -40,12 +41,10 @@ class Trainer:
             'criterion': type(criterion).__name__,
             'optimzer': type(optimizer).__name__,
         }
+        self.logger = create_logger(run_name)
+        self.root = os.path.join(self.logger.log_dir, root)
         if hparams is not None:
             self.hparams.update(hparams)
-        wandb.init(project=project_name, name=run_name, config=self.hparams)
-        weight_path = os.path.join(wandb.run.dir[:-5], root)
-        os.makedirs(weight_path, exist_ok=True)
-        self.root = weight_path
         self.shape = self.train_dl.dataset.shape
         self.current_epoch = None
         if window is None:
@@ -104,42 +103,20 @@ class Trainer:
         """
         self.scheduler.step(metrics['Val Loss'])
 
-    @staticmethod
-    def wb_mask(img, pred_mask, true_mask):
-        labels = {
-            0: 'healthy',
-            1: 'primary',
-            2: 'secondary'
-        }
-        return wandb.Image(img, masks={
-            "prediction": {"mask_data": pred_mask, "class_labels": labels},
-            "ground truth": {"mask_data": true_mask, "class_labels": labels}})
-
-    def log(self, metrics, x, preds, labels, epoch):
-        # metrics logging
-        metrics_to_log = {}
-        labels_name = ['primary', 'secondary']
+    def log(self, metrics):
         for key, value in metrics.items():
-            if type(value) not in [float, int]:
+            if type(value) not in [float, int]:  # FIXME
                 for idx, l in enumerate(labels_name):
-                    metrics_to_log[f"{key} {l}"] = value[idx]
+                    self.logger.add_scalar(f"{key} {l}", value[idx], self.current_epoch)
             else:
-                metrics_to_log[key] = value
-        wandb.log(metrics_to_log, step=epoch)
-        # logging images
-        preds = unsplit_binary_mask(preds)
-        preds = np.expand_dims(preds, axis=1)
-        labels = unsplit_binary_mask(labels)
-        labels = np.expand_dims(labels, axis=1)
-        if epoch == 0:  # if epoch is the first we log image label and prediction
-            iter_array = [(x, "Image"), (labels, "Labels"), (preds, "Prediction")]
-        else:  # otherwise we only need log predictions
-            iter_array = [(preds, "Prediction")]
-        for array, log_name in iter_array:
-            array = array[0]
-            array = to_uint(array)
-            array = np.transpose(array, (1, 0, 2, 3))
-            wandb.log({log_name: wandb.Video(array, fps=4, format="gif")}, step=epoch)
+                pass
+
+    def log_video(self, x, preds, labels):
+        for i in range(2):
+            img_to_log = img_with_masks(x.swapaxes(1, 2),
+                                        [preds[:, [i], :, :, :].swapaxes(1, 2),
+                                         labels[:, [i], :, :, :].swapaxes(1, 2)], 0.4)
+            self.logger.add_video(labels_name[i], img_to_log, self.current_epoch)
 
     def train_one_epoch(self):
         t = tqdm(enumerate(self.train_dl), total=len(self.train_dl), desc='Train', leave=False)
@@ -180,15 +157,12 @@ class Trainer:
             mask = split_mask(mask)  # C, D, W, H
             # peds
             preds = self.infer(img)  # C, D, W, H
-            preds = np.expand_dims(preds, axis=0)  # B, C, D, W, H
-            img = np.expand_dims(img, axis=0)  # B, C, D, W, H
-            mask = np.expand_dims(mask, axis=0)  # B, C, D, W, H
+            img, preds, mask = (np.expand_dims(j, axis=0) for j in [img, preds, mask])  # B, C, D, W, H
             preds, mask = self.preprocess_input(torch.tensor(preds), torch.tensor(mask))
             loss_sum += self.criterion(preds, mask).item()
+            img, mask, preds = to_numpy(img), to_numpy(mask), to_numpy(preds)
+            self.log_video(img, preds, mask,)
             preds, labels = self.postprocess_output(preds, mask)
-            img = to_numpy(img)
-            mask = to_numpy(mask)
-            preds = to_numpy(preds)
             temp_metrics = count_metrics(labels, preds, "Val")
             if metrics is None:  # if the first iteration:
                 metrics = temp_metrics
@@ -213,6 +187,7 @@ class Trainer:
             filename = f"{self.current_epoch}.ckp"
         filepath = os.path.join(self.root, filename)
         filepath = path_uniquify(filepath)
+        self.logger.close()
         torch.save(self, filepath)
 
     def train(self, epochs, save_kw={}, ckp_epoch=0):
@@ -230,7 +205,7 @@ class Trainer:
                 metrics = self.train_one_epoch()
                 val_metrics, x, preds, labels = self.validate()
                 metrics.update(val_metrics)
-                self.log(metrics, x, preds, labels, epoch)
+                self.log(metrics)
                 self.save()
                 self.scheduler_step(metrics)
             except KeyboardInterrupt:

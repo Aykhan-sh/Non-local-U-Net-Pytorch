@@ -57,7 +57,7 @@ def infer(model, img, ins, out_classes, window, batch_size, num_workers, device)
 
     pad = (window - (np.array(img.shape[-3:]) % window)) % window  # calculation padding for image
     pad = [(0, 0)] + [(0, i) for i in pad]
-    img = np.pad(img, pad, constant_values=img.min())  # padding the image
+    img = np.pad(img, pad, constant_values=img.min(), mode="constant")  # padding the image
     result = np.zeros((out_classes, *img.shape[-3:]))  # creating empty mask of shape [W, H, D]
     result_cnt = np.zeros(img.shape[-3:])  # counter of intersections
     slides = []  # how many times we have to iterate over each dimension
