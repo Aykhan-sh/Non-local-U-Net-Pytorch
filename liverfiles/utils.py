@@ -3,16 +3,23 @@ import numpy as np
 import os
 import torch
 from prettytable import PrettyTable
+import cv2
 
 
-def to_uint(array):
+def min_max(array):
     array -= array.min()
     array_max = array.max()
     if array_max != 0:
         array = array / array_max
+    return array
+
+
+def to_uint(array):
+    array = min_max(array)
     array *= 255
     array = array.astype('uint8')
     return array
+
 
 def get_nii(path):
     img = nib.load(path)
@@ -84,3 +91,48 @@ def to_numpy(array):
         return np.array(array)
     else:
         return array
+
+
+def img_with_masks(img, masks, alpha, return_colors=False):
+    '''
+    returns image with masks,
+    img - numpy array of image
+    masks - list of masks. Maximum 6 masks. only 0 and 1 allowed
+    alpha - int transparency [0:1]
+    return_colors returns list of names of colors of each mask
+    '''
+    colors = [
+        [255, 0, 0],
+        [0, 255, 0],
+        [0, 0, 255],
+        [255, 255, 0],
+        [0, 255, 255],
+        [102, 51, 0]
+    ]
+    color_names = [
+        'Red',
+        'Green',
+        'Blue',
+        'Yellow',
+        'Light',
+        'Brown'
+    ]
+    img = to_uint(img)
+    img = np.repeat(img, 3, -3)
+    for c, mask in enumerate(masks):
+        mask = to_numpy(mask)
+        mask = min_max(mask)
+        print(np.unique(mask))
+        if len(mask.shape):
+            mask = np.dstack((mask, mask, mask))
+        else:
+            mask = np.repeat(mask, 3, -3)
+        mask = mask.swapaxes(-1, -3)
+        mask = mask * np.array(colors[c])
+        mask = mask.swapaxes(-1, -3)
+        mask = mask.astype(np.uint8)
+        img = cv2.addWeighted(mask, alpha, img, 1, 0.)
+    if return_colors:
+        return img
+    else:
+        return img, color_names[0:len(masks)]
