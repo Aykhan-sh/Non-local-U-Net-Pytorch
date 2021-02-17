@@ -1,11 +1,11 @@
 import random
-from liverfiles.utils import get_mask, get_nii, split_mask
+from liverfiles.utils import get_mask, get_nii, split_mask, percentile_scale
 import numpy as np
 from torch.utils.data import Dataset
 
 
 class Ds(Dataset):
-    def __init__(self, imgs, masks, crop_shape, transforms, nonzero_prob=0.5):
+    def __init__(self, imgs, masks, crop_shape, transforms, nonzero_prob=0.3):
         self.imgs = imgs
         self.masks = masks
         self.transforms = transforms
@@ -18,10 +18,10 @@ class Ds(Dataset):
             # path, img_id = self.df.iloc[idx].values
             # img, mask = get_nii(path), get_mask(img_id)
             img, mask = self.imgs[idx], self.masks[idx]
+            img = percentile_scale(img, (0, 98))
             img, mask = self.random_crop3d(img, mask)
-            img = self.img_preprocess(img)
-            img = np.transpose(img, (2, 1, 0))
-            mask = np.transpose(mask, (2, 1, 0))
+            # img = np.transpose(img, (2, 1, 0))
+            # mask = np.transpose(mask, (2, 1, 0))
             img = np.expand_dims(img, axis=0)
             mask = np.expand_dims(mask, axis=0)
             mask = split_mask(mask).astype('int16')
@@ -29,12 +29,6 @@ class Ds(Dataset):
         except:
             print(idx)
 
-    @staticmethod
-    def img_preprocess(img):
-        img = img - img.min()
-        if img.max() != 0:
-            img = img / img.max()
-        return img
 
     # Cropping functions
     def crop(self, img, p):

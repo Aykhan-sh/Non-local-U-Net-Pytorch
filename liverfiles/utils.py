@@ -8,6 +8,22 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 # Array utils
+def percentile_scale(array, percentiles):
+    """
+    :param array: numpy array to scale
+    :param percentiles: tuple or int
+        tuple (int, int) - low bound and high bound percentile
+        int - low bound. High  bound is counted as 100 - low bound
+    :return: scaled array of the same shape
+    """
+    if isinstance(percentiles, int):
+        percentiles = (percentiles, 100 - percentiles)
+    a_min = np.percentile(array, percentiles[0])
+    a_max = np.nanpercentile(array, percentiles[1])
+    array = np.clip(array, a_min, a_max)
+    return min_max(array)
+
+
 def min_max(array):
     array -= array.min()
     array_max = array.max()

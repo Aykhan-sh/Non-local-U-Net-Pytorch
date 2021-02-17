@@ -5,9 +5,9 @@ from liverfiles.metrics import *
 from typing import Tuple
 from numbers import Number
 from tqdm.notebook import tqdm
-from liverfiles.utils import get_nii, get_mask, create_logger, img_with_masks
+from liverfiles.utils import *
 from nonlocalunet.infer import infer
-from liverfiles.utils import split_mask
+from liverfiles.utils import split_mask, min_max
 
 labels_name = ['primary', 'secondary']
 
@@ -108,8 +108,7 @@ class Trainer:
             if type(value) not in [float, int]:  # FIXME
                 for idx, l in enumerate(labels_name):
                     self.logger.add_scalar(f"{key} {l}", value[idx], self.current_epoch)
-            else:
-                pass
+        self.logger.add_scalar('Lr', self.get_lr(), self.current_epoch)
 
     def log_video(self, x, preds, labels):
         for i in range(2):
@@ -143,17 +142,17 @@ class Trainer:
     @torch.no_grad()
     def validate(self):
         self.model.eval()
-        t = tqdm(enumerate(self.val_df.values), total=len(self.val_df.values), desc='Val', leave=False)
+        t = tqdm(range(len(self.val_df[0])), total=len(self.val_df[0]), desc='Val', leave=False)
         loss_sum = 0
         metrics = None
-        for idx, (path, img_id) in t:
-            img, mask = get_nii(path), get_mask(img_id)  # H, W, D
+        for idx in t:
+            img = self.val_df[0][idx]
+            mask = self.val_df[1][idx]
             # img
-            img = np.transpose(img, (2, 1, 0))  # D, W, H
+            img = percentile_scale(img, (0, 98))
             img = np.expand_dims(img, axis=0)  # C, D, W, H
             # mask
-            mask = np.transpose(mask, (2, 1, 0))  # D, W, H
-            mask = np.expand_dims(mask, axis=0)  # C, D, W, H
+            mask = np.expand_dims(mask, axis=0)
             mask = split_mask(mask)  # C, D, W, H
             # peds
             preds = self.infer(img)  # C, D, W, H
@@ -161,7 +160,7 @@ class Trainer:
             preds, mask = self.preprocess_input(torch.tensor(preds), torch.tensor(mask))
             loss_sum += self.criterion(preds, mask).item()
             img, mask, preds = to_numpy(img), to_numpy(mask), to_numpy(preds)
-            self.log_video(img, preds, mask,)
+            self.log_video(img, preds, mask)
             preds, labels = self.postprocess_output(preds, mask)
             temp_metrics = count_metrics(labels, preds, "Val")
             if metrics is None:  # if the first iteration:
@@ -206,7 +205,7 @@ class Trainer:
                 val_metrics, x, preds, labels = self.validate()
                 metrics.update(val_metrics)
                 self.log(metrics)
-                self.save()
+                # self.save()   #FIXME
                 self.scheduler_step(metrics)
             except KeyboardInterrupt:
                 pass
