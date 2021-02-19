@@ -111,11 +111,17 @@ class Trainer:
         self.logger.add_scalar('Lr', self.get_lr(), self.current_epoch)
 
     def log_video(self, x, preds, labels):
+        x = x.swapaxes(1, 2)
+        preds = preds.swapaxes(1, 2)
+        labels = labels.swapaxes(1, 2)
         for i in range(2):
-            img_to_log = img_with_masks(x.swapaxes(1, 2),
-                                        [preds[:, [i], :, :, :].swapaxes(1, 2),
-                                         labels[:, [i], :, :, :].swapaxes(1, 2)], 0.4)
+            img_to_log = img_with_masks(x, [preds[:, :, [i], :, :],
+                                            labels[:, :, [i], :, :]], 0.4)
             self.logger.add_video(labels_name[i], img_to_log, self.current_epoch)
+
+            img_to_log = img_with_masks(x, [preds[:, :, [i], :, :],
+                                            labels[:, :, [i], :, :] > 0.8], 0.4)
+            self.logger.add_video(labels_name[i] + " Binary", img_to_log, self.current_epoch)
 
     def train_one_epoch(self):
         t = tqdm(enumerate(self.train_dl), total=len(self.train_dl), desc='Train', leave=False)

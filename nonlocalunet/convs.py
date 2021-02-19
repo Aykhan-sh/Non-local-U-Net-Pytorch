@@ -16,7 +16,11 @@ def get_conv_transform(in_channels, out_channels, mode):
     :return:
     """
     if mode == 'up':
-        return Deconv(in_channels, out_channels)
+        return nn.ConvTranspose3d(in_channels=in_channels,
+                                  out_channels=out_channels,
+                                  kernel_size=2,
+                                  stride=2,
+                                  padding=0)
     elif mode == 'down':
         return nn.Conv3d(in_channels=in_channels,
                          out_channels=out_channels,
@@ -28,18 +32,3 @@ def get_conv_transform(in_channels, out_channels, mode):
                          out_channels=out_channels,
                          kernel_size=1,
                          stride=1)
-
-
-class Deconv(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(Deconv, self).__init__()
-        self.conv = torch.nn.ConvTranspose3d(in_channels=in_channels,
-                                             out_channels=out_channels,
-                                             kernel_size=3,
-                                             stride=2,
-                                             padding=1)
-
-    def forward(self, x):
-        x = self.conv(x)
-        x = F.pad(x, (1, 0, 1, 0, 0, 1, 0, 0, 0, 0))
-        return x

@@ -110,7 +110,10 @@ def img_with_masks(img, masks, alpha, return_colors=False):
     img = np.repeat(img, 3, -3)
     for c, mask in enumerate(masks):
         mask = to_numpy(mask)
-        mask = min_max(mask)
+        if mask.dtype == bool:
+            mask.astype('uint8')
+        else:
+            mask = min_max(mask)
         if len(mask.shape):
             mask = np.dstack((mask, mask, mask))
         else:
