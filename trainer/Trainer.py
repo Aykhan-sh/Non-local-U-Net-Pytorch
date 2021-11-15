@@ -3,16 +3,16 @@ from typing import Tuple
 from tqdm.notebook import tqdm
 from liverfiles.utils import *
 from nonlocalunet.infer import infer
-from liverfiles.utils import split_mask, min_max
+from trainer.utils import split_mask, open_mask, open_ct
 
-labels_name = ['primary', 'secondary']
-
+labels_name = ['Background', 'Liver', 'Bladder', 'Lungs', 'Kidneys', 'Bone', 'Brain']
 
 class Trainer:
-    def __init__(self, model, optimizer, scheduler, criterion, train_dl, val_df, device,
+    def __init__(self, model, num_classes, optimizer, scheduler, criterion, train_dl, val_df, device,
                  run_name, hparams=None, window=None, root='weights'):
         """
         :param model: torch model
+        :param num_classes: number of classes
         :param optimizer: torch optimizer
         :param scheduler: torch scheduler
         :param criterion: Loss function
@@ -23,6 +23,7 @@ class Trainer:
         """
         root = "weights"
         self.model = model.to(device)
+        self.num_classes = num_classes
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.criterion = criterion
@@ -103,21 +104,21 @@ class Trainer:
         for key, value in metrics.items():
             if type(value) not in [float, int]:  # FIXME
                 for idx, l in enumerate(labels_name):
-                    self.logger.add_scalar(f"{key} {l}", value[idx], self.current_epoch)
+                    self.logger.add_scalar(f"{key}/{l}", value[idx], self.current_epoch)
         self.logger.add_scalar('Lr', self.get_lr(), self.current_epoch)
 
     def log_video(self, x, preds, labels):
         x = x.swapaxes(1, 2)
         preds = preds.swapaxes(1, 2)
         labels = labels.swapaxes(1, 2)
-        for i in range(2):
+        for i in range(self.num_classes):
             img_to_log = img_with_masks(x, [preds[:, :, [i], :, :],
                                             labels[:, :, [i], :, :]], 0.4)
-            self.logger.add_video(labels_name[i], img_to_log, self.current_epoch)
+            self.logger.add_video(labels_name[i]+'/Normal', img_to_log, self.current_epoch)
 
             img_to_log = img_with_masks(x, [preds[:, :, [i], :, :],
                                             labels[:, :, [i], :, :] > 0.8], 0.4)
-            self.logger.add_video(labels_name[i] + " Binary", img_to_log, self.current_epoch)
+            self.logger.add_video(labels_name[i] + "/Binary", img_to_log, self.current_epoch)
 
     def train_one_epoch(self):
         t = tqdm(enumerate(self.train_dl), total=len(self.train_dl), desc='Train', leave=False)
@@ -144,18 +145,16 @@ class Trainer:
     @torch.no_grad()
     def validate(self):
         self.model.eval()
-        t = tqdm(range(len(self.val_df[0])), total=len(self.val_df[0]), desc='Val', leave=False)
+        t = tqdm(range(len(self.val_df)), total=len(self.val_df), desc='Val', leave=False)
         loss_sum = 0
         metrics = None
         for idx in t:
-            img = self.val_df[0][idx]
-            mask = self.val_df[1][idx]
+            img = open_ct(self.val_df[idx])
+            mask = open_mask(self.val_df[idx])
             # img
-            img = percentile_scale(img, (0, 98))
             img = np.expand_dims(img, axis=0)  # C, D, W, H
             # mask
-            mask = np.expand_dims(mask, axis=0)
-            mask = split_mask(mask)  # C, D, W, H
+            mask = split_mask(mask, num_of_classes=self.num_classes)  # C, D, W, H
             # peds
             preds = self.infer(img)  # C, D, W, H
             img, preds, mask = (np.expand_dims(j, axis=0) for j in [img, preds, mask])  # B, C, D, W, H
@@ -175,7 +174,7 @@ class Trainer:
         return metrics, img, preds, mask
 
     def infer(self, img):
-        return infer(self.model, img, self.shape, 2, self.window,
+        return infer(self.model, img, self.shape, self.num_classes, self.window,
                      batch_size=self.train_dl.batch_size, num_workers=self.train_dl.num_workers,
                      device=self.device)
 
@@ -204,11 +203,12 @@ class Trainer:
             self.current_epoch = epoch
             try:
                 metrics = self.train_one_epoch()
-                val_metrics, x, preds, labels = self.validate()
-                metrics.update(val_metrics)
-                self.log(metrics)
-                # self.save()   #FIXME
-                self.scheduler_step(metrics)
+                if (epoch + 1) % 10 == 0:
+                    val_metrics, x, preds, labels = self.validate()
+                    metrics.update(val_metrics)
+                    self.log(metrics)
+                    # self.save()   #FIXME
+                    self.scheduler_step(metrics)
             except KeyboardInterrupt:
                 pass
                 if epoch > ckp_epoch:  # ensure that at least one epoch was covered.
