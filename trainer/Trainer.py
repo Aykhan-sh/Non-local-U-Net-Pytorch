@@ -129,6 +129,7 @@ class Trainer:
         for idx, (x, labels) in t:
             x, labels = self.preprocess_input(x, labels)
             preds, loss_values = self.optimizer_step(x, labels)
+            print(loss_values)
             preds, labels = self.postprocess_output(preds, labels)
             temp_metrics = count_metrics(labels, preds, "Train")
             if metrics is None:  # if the first iteration:

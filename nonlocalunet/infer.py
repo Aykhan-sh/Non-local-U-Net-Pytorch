@@ -50,7 +50,6 @@ def infer(model, img, ins, out_classes, window, batch_size, num_workers, device)
     for i in range(3):
         is_valid = is_valid and window[i] <= ins[i]
     assert is_valid, "Window must be <= than the lowest dimension of models input shape"
-    model.eval()
     model.to(device)
     if len(img.shape) == 3:
         img = np.expand_dims(img, axis=0)
