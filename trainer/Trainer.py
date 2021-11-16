@@ -22,7 +22,7 @@ class Trainer:
         :param root: directory to save logs and weights  #FIXME
         """
         root = "weights"
-        self.model = model.to(device)
+        self.model = model
         self.num_classes = num_classes
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -113,12 +113,8 @@ class Trainer:
         labels = labels.swapaxes(1, 2)
         for i in range(self.num_classes):
             img_to_log = img_with_masks(x, [preds[:, :, [i], :, :],
-                                            labels[:, :, [i], :, :]], 0.4)
-            self.logger.add_video(labels_name[i]+'/Normal', img_to_log, self.current_epoch)
-
-            img_to_log = img_with_masks(x, [preds[:, :, [i], :, :],
-                                            labels[:, :, [i], :, :] > 0.8], 0.4)
-            self.logger.add_video(labels_name[i] + "/Binary", img_to_log, self.current_epoch)
+                                            labels[:, :, [i], :, :] > 0.5], 0.4)
+            self.logger.add_video('Val/' + labels_name[i], img_to_log, self.current_epoch)
 
     def train_one_epoch(self):
         t = tqdm(enumerate(self.train_dl), total=len(self.train_dl), desc='Train', leave=False)
@@ -129,7 +125,6 @@ class Trainer:
         for idx, (x, labels) in t:
             x, labels = self.preprocess_input(x, labels)
             preds, loss_values = self.optimizer_step(x, labels)
-            print(loss_values)
             preds, labels = self.postprocess_output(preds, labels)
             temp_metrics = count_metrics(labels, preds, "Train")
             if metrics is None:  # if the first iteration:
@@ -204,7 +199,7 @@ class Trainer:
             self.current_epoch = epoch
             try:
                 metrics = self.train_one_epoch()
-                if (epoch + 1) % 10 == 0:
+                if (epoch + 1) % 5 == 0:
                     val_metrics, x, preds, labels = self.validate()
                     metrics.update(val_metrics)
                     self.log(metrics)

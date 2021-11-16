@@ -38,7 +38,7 @@ class NonLocalUnetBuilder(nn.Module):
         super(NonLocalUnetBuilder, self).__init__()
         self.depth = depth
         self.input_block = InputBlock(in_channels)
-        self.conv_input = nn.Conv3d(in_channels, 32, 1)
+        self.conv_input = nn.Conv3d(in_channels, init_filters, 1)
         self.down_sample = nn.ModuleList()
         fl = [init_filters*2**i for i in range(depth+1)]  # filter_list
         # Down sample
@@ -53,7 +53,7 @@ class NonLocalUnetBuilder(nn.Module):
         # Output
         self.output_block = InputBlock(fl[0])
         self.dropout = nn.Dropout(dropout)
-        self.conv_output = nn.Conv3d(32, out_channels, 1)
+        self.conv_output = nn.Conv3d(fl[0], out_channels, 1)
 
     def forward(self, x) -> torch.tensor:
         x = x.contiguous()
@@ -65,11 +65,8 @@ class NonLocalUnetBuilder(nn.Module):
         # bottom block
         x = self.bottom(down[-1])
         # up sampling
-        for i in range(len(down)):
-            print(down[i].shape)
         for i in range(self.depth):
             x = self.up_sample[i](x)
-            print(x.shape, down[-i-2].shape)
             x = x + down[-i-2]
         x = self.output_block(x)
         x = self.dropout(x)
