@@ -58,9 +58,9 @@ class GlobalAggregationBlock(nn.Module):
         return output
 
 
-class InputBlock(nn.Module):
+class ResidualBlock(nn.Module):
     def __init__(self, in_channels):
-        super(InputBlock, self).__init__()
+        super(ResidualBlock, self).__init__()
         self.batch_norm1 = nn.BatchNorm3d(in_channels)
         self.batch_norm2 = nn.BatchNorm3d(in_channels)
         self.relu = nn.ReLU6()
@@ -100,9 +100,9 @@ class DownSamplingBlock(nn.Module):
         return x
 
 
-class BottomBlock(nn.Module):
+class BottomAggBlock(nn.Module):
     def __init__(self, in_channels, ck, cv, dropout=0.5):
-        super(BottomBlock, self).__init__()
+        super(BottomAggBlock, self).__init__()
         self.agg_block = GlobalAggregationBlock(in_channels, in_channels, ck, cv, 'same', dropout=dropout)
 
     def forward(self, x):
@@ -110,9 +110,24 @@ class BottomBlock(nn.Module):
         return x
 
 
-class UpSamplingBlock(nn.Module):
+class BottomBlock(nn.Module):
+    def __init__(self, in_channels):
+        super(BottomBlock, self).__init__()
+        self.relu = nn.ReLU6()
+        self.conv1 = nn.Conv3d(in_channels, in_channels, 3, padding=1)
+        self.conv2 = nn.Conv3d(in_channels, in_channels, 3, padding=1)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.relu(x)
+        return x
+
+
+class UpSamplingAggBlock(nn.Module):
     def __init__(self, in_channels, out_channels, ck, cv, dropout=0.5):
-        super(UpSamplingBlock, self).__init__()
+        super(UpSamplingAggBlock, self).__init__()
         self.agg_block = GlobalAggregationBlock(in_channels, out_channels, ck, cv, 'up', dropout=dropout)
         self.residual_deconv = get_conv_transform(in_channels, out_channels, 'up')
 
@@ -120,4 +135,14 @@ class UpSamplingBlock(nn.Module):
         residual = self.residual_deconv(x)
         x = self.agg_block(x)
         x = x + residual
+        return x
+
+
+class UpSamplingBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(UpSamplingBlock, self).__init__()
+        self.residual_deconv = get_conv_transform(in_channels, out_channels, 'up')
+
+    def forward(self, x):
+        x = self.residual_deconv(x)
         return x

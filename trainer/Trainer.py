@@ -1,11 +1,8 @@
-from liverfiles.metrics import *
+from trainer.metrics import *
 from typing import Tuple
 from tqdm.notebook import tqdm
-from liverfiles.utils import *
+from trainer.utils import *
 from nonlocalunet.infer import infer
-from trainer.utils import split_mask, open_mask, open_ct
-
-labels_name = ['Background', 'Liver', 'Bladder', 'Lungs', 'Kidneys', 'Bone', 'Brain']
 
 class Trainer:
     def __init__(self, model, num_classes, optimizer, scheduler, criterion, train_dl, val_df, device,
@@ -86,12 +83,13 @@ class Trainer:
         :return: processed preds and labels to list
         """
         threshold = 0.5
-        post_preds = to_numpy(preds)
+        preds = to_numpy(preds)
+        post_preds = preds.copy()
         post_preds = (post_preds > threshold).astype('uint8')
         if labels is not None:
             post_gt = to_numpy(labels)
-            return post_preds, post_gt
-        return post_preds
+            return post_preds, preds, post_gt
+        return post_preds, preds
 
     def scheduler_step(self, metrics):
         """
@@ -100,11 +98,14 @@ class Trainer:
         """
         self.scheduler.step(metrics['Val Loss'])
 
-    def log(self, metrics):
-        for key, value in metrics.items():
-            if type(value) not in [float, int]:  # FIXME
-                for idx, l in enumerate(labels_name):
-                    self.logger.add_scalar(f"{key}/{l}", value[idx], self.current_epoch)
+    def log(self, metric_dict):
+        for metric in metric_dict:
+            if metric in ['Train Loss', 'Val Loss', 'Lr']:
+                continue
+            for l in metric_dict[metric]:
+                self.logger.add_scalar(f"{metric}/{l}", metric_dict[metric][l], self.current_epoch)
+        self.logger.add_scalar('Loss/Train', metric_dict['Train Loss'], self.current_epoch)
+        self.logger.add_scalar('Loss/Val', metric_dict['Val Loss'], self.current_epoch)
         self.logger.add_scalar('Lr', self.get_lr(), self.current_epoch)
 
     def log_video(self, x, preds, labels):
@@ -114,27 +115,28 @@ class Trainer:
         for i in range(self.num_classes):
             img_to_log = img_with_masks(x, [preds[:, :, [i], :, :],
                                             labels[:, :, [i], :, :] > 0.5], 0.4)
-            self.logger.add_video('Val/' + labels_name[i], img_to_log, self.current_epoch)
+            self.logger.add_video('Val/' + label_names[i], img_to_log, self.current_epoch)
 
     def train_one_epoch(self):
-        t = tqdm(enumerate(self.train_dl), total=len(self.train_dl), desc='Train', leave=False)
+        t = tqdm(self.train_dl, total=len(self.train_dl), desc='Train', leave=False)
         metrics = None
-        result, gt = [], []
         loss_sum = 0
+        idx = 0  # for some reason len(train_dl is not working)
         self.model.train()
-        for idx, (x, labels) in t:
+        for x, labels in t:
+            idx += 1
             x, labels = self.preprocess_input(x, labels)
-            preds, loss_values = self.optimizer_step(x, labels)
-            preds, labels = self.postprocess_output(preds, labels)
-            temp_metrics = count_metrics(labels, preds, "Train")
+            raw_preds, loss_values = self.optimizer_step(x, labels)
+            post_preds, raw_preds, labels = self.postprocess_output(raw_preds, labels)
+            temp_metrics = count_metrics(labels, raw_preds, post_preds, 'Train')
             if metrics is None:  # if the first iteration:
                 metrics = temp_metrics
             else:  # sum all metrics
                 metrics = sum_metrics(metrics, temp_metrics)
             loss_sum += loss_values.item()
-            t.set_postfix(loss=f'{loss_sum / (idx + 1):.3f}')
+            t.set_postfix(loss=f'{loss_sum / idx:.3f}')
             t.update()
-        metrics = divide_metrics(metrics, len(self.train_dl))  # averaging metrics
+        metrics = divide_metrics(metrics, idx)  # averaging metrics
         metrics['Train Loss'] = loss_sum / len(self.train_dl)  # adding to metric dictionary loss value
         return metrics
 
@@ -152,22 +154,22 @@ class Trainer:
             # mask
             mask = split_mask(mask, num_of_classes=self.num_classes)  # C, D, W, H
             # peds
-            preds = self.infer(img)  # C, D, W, H
-            img, preds, mask = (np.expand_dims(j, axis=0) for j in [img, preds, mask])  # B, C, D, W, H
-            preds, mask = self.preprocess_input(torch.tensor(preds), torch.tensor(mask))
-            loss_sum += self.criterion(preds, mask).item()
-            img, mask, preds = to_numpy(img), to_numpy(mask), to_numpy(preds)
-            self.log_video(img, preds, mask)
-            preds, labels = self.postprocess_output(preds, mask)
-            temp_metrics = count_metrics(labels, preds, "Val")
+            raw_preds = self.infer(img)  # C, D, W, H
+            img, raw_preds, mask = (np.expand_dims(j, axis=0) for j in [img, raw_preds, mask])  # B, C, D, W, H
+            raw_preds, mask = self.preprocess_input(torch.tensor(raw_preds), torch.tensor(mask))
+            loss_sum += self.criterion(raw_preds, mask).item()
+            img, mask, raw_preds = to_numpy(img), to_numpy(mask), to_numpy(raw_preds)
+            self.log_video(img, raw_preds, mask)
+            post_preds, raw_preds, labels = self.postprocess_output(raw_preds, mask)
+            temp_metrics = count_metrics(labels, raw_preds, post_preds, "Val")
             if metrics is None:  # if the first iteration:
                 metrics = temp_metrics
             else:  # sum all metrics
                 metrics = sum_metrics(metrics, temp_metrics)
 
         metrics = divide_metrics(metrics, len(self.val_df))  # averaging metrics
-        metrics['Val Loss'] = loss_sum / len(self.train_dl)  # adding to metric dictionary loss value
-        return metrics, img, preds, mask
+        metrics['Val Loss'] = loss_sum / len(self.val_df)  # adding to metric dictionary loss value
+        return metrics, img, raw_preds, mask
 
     def infer(self, img):
         return infer(self.model, img, self.shape, self.num_classes, self.window,
@@ -199,7 +201,7 @@ class Trainer:
             self.current_epoch = epoch
             try:
                 metrics = self.train_one_epoch()
-                if (epoch + 1) % 5 == 0:
+                if (epoch + 1) % 1 == 0:
                     val_metrics, x, preds, labels = self.validate()
                     metrics.update(val_metrics)
                     self.log(metrics)
