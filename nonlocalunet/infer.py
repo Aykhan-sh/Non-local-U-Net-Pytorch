@@ -16,6 +16,25 @@ def to_numpy(array):
         return array
 
 
+def pad(img, window):
+    ors = img.shape[-3:]  # original shape
+    pad = (window - (np.array(img.shape[-3:]) % window)) % window  # calculation padding for image
+    pad = [(0, i) for i in pad]
+    img = np.pad(img, pad, constant_values=img.min(), mode="constant")  # padding the image
+    return img
+
+
+def tile(img, shape):
+    img = img.reshape(img.shape[0] // shape[0],
+                      shape[0],
+                      img.shape[1] // shape[1],
+                      shape[1],
+                      img.shape[2] // shape[2],
+                      shape[2])
+    img = img.transpose(0, 2, 4, 1, 3, 5).reshape(-1, *shape)
+    return img
+
+
 class InferenceDataset(Dataset):
     def __init__(self, img, start_coordinates, input_size):
         self.img = img

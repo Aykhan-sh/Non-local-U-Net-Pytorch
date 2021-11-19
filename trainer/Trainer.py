@@ -4,8 +4,9 @@ from tqdm.notebook import tqdm
 from trainer.utils import *
 from nonlocalunet.infer import infer
 
+
 class Trainer:
-    def __init__(self, model, num_classes, optimizer, scheduler, criterion, train_dl, val_df, device,
+    def __init__(self, model, num_classes, optimizer, scheduler, criterion, train_dl, val_dl, test_ids, device,
                  run_name, hparams=None, window=None, root='weights'):
         """
         :param model: torch model
@@ -25,7 +26,8 @@ class Trainer:
         self.scheduler = scheduler
         self.criterion = criterion
         self.train_dl = train_dl
-        self.val_df = val_df
+        self.val_dl = val_dl
+        self.test_ids = test_ids
         self.device = device
         self.metric_history = []
         self.best_metrics = None
@@ -108,14 +110,14 @@ class Trainer:
         self.logger.add_scalar('Loss/Val', metric_dict['Val Loss'], self.current_epoch)
         self.logger.add_scalar('Lr', self.get_lr(), self.current_epoch)
 
-    def log_video(self, x, preds, labels):
+    def log_video(self, x, preds, labels, name):
         x = x.swapaxes(1, 2)
         preds = preds.swapaxes(1, 2)
         labels = labels.swapaxes(1, 2)
         for i in range(self.num_classes):
             img_to_log = img_with_masks(x, [preds[:, :, [i], :, :],
                                             labels[:, :, [i], :, :] > 0.5], 0.4)
-            self.logger.add_video('Val/' + label_names[i], img_to_log, self.current_epoch)
+            self.logger.add_video(f'{name}/' + label_names[i], img_to_log, self.current_epoch)
 
     def train_one_epoch(self):
         t = tqdm(self.train_dl, total=len(self.train_dl), desc='Train', leave=False)
@@ -142,13 +144,36 @@ class Trainer:
 
     @torch.no_grad()
     def validate(self):
-        self.model.eval()
-        t = tqdm(range(len(self.val_df)), total=len(self.val_df), desc='Val', leave=False)
-        loss_sum = 0
+        t = tqdm(self.val_dl, total=len(self.val_dl), desc='Test', leave=False)
         metrics = None
+        loss_sum = 0
+        idx = 0  # for some reason len(train_dl is not working)
+        self.model.eval()
+        for x, labels in t:
+            idx += 1
+            x, labels = self.preprocess_input(x, labels)
+            raw_preds = self.model(x)
+            loss_sum += self.criterion(raw_preds, labels).item()
+            post_preds, raw_preds, labels = self.postprocess_output(raw_preds, labels)
+            temp_metrics = count_metrics(labels, raw_preds, post_preds, 'Val')
+            if metrics is None:  # if the first iteration:
+                metrics = temp_metrics
+            else:  # sum all metrics
+                metrics = sum_metrics(metrics, temp_metrics)
+            t.set_postfix(loss=f'{loss_sum / idx:.3f}')
+            t.update()
+        metrics = divide_metrics(metrics, idx)  # averaging metrics
+        metrics['Val Loss'] = loss_sum / len(self.train_dl)  # adding to metric dictionary loss value
+        return metrics
+
+    @torch.no_grad()
+    def test(self):
+        self.model.eval()
+        t = tqdm(range(len(self.test_ids)), total=len(self.test_ids), desc='Val', leave=False)
+        loss_sum = 0
         for idx in t:
-            img = open_ct(self.val_df[idx])
-            mask = open_mask(self.val_df[idx])
+            img = open_ct(self.test_ids[idx])
+            mask = open_mask(self.test_ids[idx])
             # img
             img = np.expand_dims(img, axis=0)  # C, D, W, H
             # mask
@@ -156,20 +181,7 @@ class Trainer:
             # peds
             raw_preds = self.infer(img)  # C, D, W, H
             img, raw_preds, mask = (np.expand_dims(j, axis=0) for j in [img, raw_preds, mask])  # B, C, D, W, H
-            raw_preds, mask = self.preprocess_input(torch.tensor(raw_preds), torch.tensor(mask))
-            loss_sum += self.criterion(raw_preds, mask).item()
-            img, mask, raw_preds = to_numpy(img), to_numpy(mask), to_numpy(raw_preds)
-            self.log_video(img, raw_preds, mask)
-            post_preds, raw_preds, labels = self.postprocess_output(raw_preds, mask)
-            temp_metrics = count_metrics(labels, raw_preds, post_preds, "Val")
-            if metrics is None:  # if the first iteration:
-                metrics = temp_metrics
-            else:  # sum all metrics
-                metrics = sum_metrics(metrics, temp_metrics)
-
-        metrics = divide_metrics(metrics, len(self.val_df))  # averaging metrics
-        metrics['Val Loss'] = loss_sum / len(self.val_df)  # adding to metric dictionary loss value
-        return metrics, img, raw_preds, mask
+            self.log_video(img, raw_preds, mask, f'Example {self.test_ids[idx]}')
 
     def infer(self, img):
         return infer(self.model, img, self.shape, self.num_classes, self.window,
@@ -201,12 +213,11 @@ class Trainer:
             self.current_epoch = epoch
             try:
                 metrics = self.train_one_epoch()
-                if (epoch + 1) % 1 == 0:
-                    val_metrics, x, preds, labels = self.validate()
-                    metrics.update(val_metrics)
-                    self.log(metrics)
-                    # self.save()   #FIXME
-                    self.scheduler_step(metrics)
+                val_metrics, x, preds, labels = self.validate()
+                metrics.update(val_metrics)
+                self.log(metrics)
+                # self.save()   #FIXME
+                self.scheduler_step(metrics)
             except KeyboardInterrupt:
                 pass
                 if epoch > ckp_epoch:  # ensure that at least one epoch was covered.

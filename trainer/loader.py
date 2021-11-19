@@ -3,6 +3,15 @@ from torch.utils.data import Dataset, DataLoader
 from trainer.utils import split_mask, open_ct, open_mask
 
 
+class TailDs(Dataset):
+    def __init__(self, df, shape, transforms=None):
+        self.df = df
+
+    def __getitem__(self, idx):
+        img = np.load(self.df.iloc[idx, 1])
+        mask = np.load(self.df.iloc[idx, 2])
+        
+
 class Ds(Dataset):
     def __init__(self, indexes, shape, transforms=None):
         self.indexes = indexes
