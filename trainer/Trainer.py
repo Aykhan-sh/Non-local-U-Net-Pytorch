@@ -6,7 +6,7 @@ from nonlocalunet.infer import infer
 
 
 class Trainer:
-    def __init__(self, model, num_classes, optimizer, scheduler, criterion, train_dl, val_dl, test_ids, device,
+    def __init__(self, model, num_classes, shape, optimizer, scheduler, criterion, train_dl, val_dl, test_ids, device,
                  run_name, hparams=None, window=None, root='weights'):
         """
         :param model: torch model
@@ -41,7 +41,7 @@ class Trainer:
         self.root = os.path.join(self.logger.log_dir, root)
         if hparams is not None:
             self.hparams.update(hparams)
-        self.shape = self.train_dl.dataset.shape
+        self.shape = shape
         self.current_epoch = None
         if window is None:
             self.window = self.shape
@@ -144,7 +144,7 @@ class Trainer:
 
     @torch.no_grad()
     def validate(self):
-        t = tqdm(self.val_dl, total=len(self.val_dl), desc='Test', leave=False)
+        t = tqdm(self.val_dl, total=len(self.val_dl), desc='Val', leave=False)
         metrics = None
         loss_sum = 0
         idx = 0  # for some reason len(train_dl is not working)
@@ -213,11 +213,13 @@ class Trainer:
             self.current_epoch = epoch
             try:
                 metrics = self.train_one_epoch()
-                val_metrics, x, preds, labels = self.validate()
+                val_metrics = self.validate()
                 metrics.update(val_metrics)
                 self.log(metrics)
                 # self.save()   #FIXME
                 self.scheduler_step(metrics)
+                if (epoch + 1) % 10 == 0:
+                    self.test()
             except KeyboardInterrupt:
                 pass
                 if epoch > ckp_epoch:  # ensure that at least one epoch was covered.

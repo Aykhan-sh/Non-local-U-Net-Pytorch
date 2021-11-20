@@ -4,13 +4,21 @@ from trainer.utils import split_mask, open_ct, open_mask
 
 
 class TailDs(Dataset):
-    def __init__(self, df, shape, transforms=None):
+    def __init__(self, df, transforms=None):
         self.df = df
 
     def __getitem__(self, idx):
-        img = np.load(self.df.iloc[idx, 1])
+        ct = np.load(self.df.iloc[idx, 1])
         mask = np.load(self.df.iloc[idx, 2])
-        
+        ct = np.expand_dims(ct, 0)
+        mask = split_mask(mask, 7)
+        ct = ct.astype('float')
+        mask = mask.astype('float')
+        return ct, mask
+
+    def __len__(self):
+        return len(self.df.volume.unique())
+
 
 class Ds(Dataset):
     def __init__(self, indexes, shape, transforms=None):
