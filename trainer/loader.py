@@ -17,7 +17,7 @@ class TailDs(Dataset):
         return ct, mask
 
     def __len__(self):
-        return len(self.df.volume.unique())
+        return len(self.df)
 
 
 class Ds(Dataset):
