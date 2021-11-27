@@ -4,14 +4,16 @@ from trainer.utils import split_mask, open_ct, open_mask
 
 
 class TailDs(Dataset):
-    def __init__(self, df, transforms=None):
+    def __init__(self, df, split=True, transforms=None):
         self.df = df
+        self.split = split
 
     def __getitem__(self, idx):
         ct = np.load(self.df.iloc[idx, 1])
         mask = np.load(self.df.iloc[idx, 2])
         ct = np.expand_dims(ct, 0)
-        mask = split_mask(mask, 7)
+        if self.split:
+            mask = split_mask(mask, 7)
         ct = ct.astype('float')
         mask = mask.astype('float')
         return ct, mask
